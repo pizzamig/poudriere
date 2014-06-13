@@ -56,7 +56,8 @@ Options:
 		     tree. By default it is portsnap, possible alternatives are
 		     "portsnap", "svn", "svn+http", "svn+https",
 		     "svn+file", "svn+ssh", "git"
-    -B branch     -- Which branch to use for SVN method (default: head)
+    -B branch     -- Which branch to use for SVN/GIT method
+                     (default: head/master)
     -q            -- Quiet (Remove the header in the list view)
 EOF
 	exit 1
@@ -70,7 +71,6 @@ LIST=0
 QUIET=0
 VERBOSE=0
 KEEP=0
-BRANCH=head
 while getopts "B:cFudklp:qf:M:m:v" FLAG; do
 	case "${FLAG}" in
 		B)
@@ -120,6 +120,9 @@ done
 
 [ $(( CREATE + UPDATE + DELETE + LIST )) -lt 1 ] && usage
 
+saved_argv="$@"
+shift $((OPTIND-1))
+
 METHOD=${METHOD:-portsnap}
 PTNAME=${PTNAME:-default}
 
@@ -134,13 +137,26 @@ git);;
 *) usage;;
 esac
 
+case ${METHOD} in
+svn*) : ${BRANCH:=head} ;;
+git)  : ${BRANCH:=master} ;;
+esac
+
 if [ ${LIST} -eq 1 ]; then
-	format='%-20s %-10s %s\n'
-	[ $QUIET -eq 0 ] &&
-		printf "${format}" "PORTSTREE" "METHOD" "PATH"
-	porttree_list | while read ptname ptmethod ptpath; do
-		printf "${format}" ${ptname} ${ptmethod} ${ptpath}
-	done
+	format='%%-%ds %%-%ds %%-%ds %%s\n'
+	display_setup "${format}" 4 "-d"
+	display_add "PORTSTREE" "METHOD" "TIMESTAMP" "PATH"
+	while read ptname ptmethod ptpath; do
+		_pget timestamp ${ptname} timestamp 2>/dev/null || :
+		time=
+		[ -n "${timestamp}" ] && \
+		    time="$(date -j -r ${timestamp} "+%Y-%m-%d %H:%M:%S")"
+		display_add ${ptname} ${ptmethod} "${time}" ${ptpath}
+	done <<- EOF
+	$(porttree_list)
+	EOF
+	[ ${QUIET} -eq 1 ] && quiet="-q"
+	display_output ${quiet}
 else
 	[ -z "${PTNAME}" ] && usage
 fi
@@ -151,9 +167,16 @@ cleanup_new_ports() {
 	rm -rf ${POUDRIERED}/ports/${PTNAME} || :
 }
 
+check_portsnap_interactive() {
+	if /usr/sbin/portsnap --help | grep -q -- '--interactive'; then
+		echo "--interactive "
+	fi
+}
+
 if [ ${CREATE} -eq 1 ]; then
 	# test if it already exists
 	porttree_exists ${PTNAME} && err 2 "The ports tree, ${PTNAME}, already exists"
+	maybe_run_queued "${saved_argv}"
 	: ${PTMNT="${BASEFS:=/usr/local${ZROOTFS}}/ports/${PTNAME}"}
 	: ${PTFS="${ZPOOL}${ZROOTFS}/ports/${PTNAME}"}
 
@@ -166,10 +189,12 @@ if [ ${CREATE} -eq 1 ]; then
 	if [ $FAKE -eq 0 ]; then
 		case ${METHOD} in
 		portsnap)
+			# additional portsnap arguments
+			PTARGS=$(check_portsnap_interactive)
 			mkdir ${PTMNT}/.snap
 			msg "Extracting portstree \"${PTNAME}\"..."
-			/usr/sbin/portsnap -d ${PTMNT}/.snap -p ${PTMNT} fetch extract ||
-			/usr/sbin/portsnap -d ${PTMNT}/.snap -p ${PTMNT} fetch extract ||
+			/usr/sbin/portsnap ${PTARGS} -d ${PTMNT}/.snap -p ${PTMNT} fetch extract ||
+			/usr/sbin/portsnap ${PTARGS} -d ${PTMNT}/.snap -p ${PTMNT} fetch extract ||
 			    err 1 " fail"
 			;;
 		svn*)
@@ -192,11 +217,12 @@ if [ ${CREATE} -eq 1 ]; then
 		git)
 			msg_n "Cloning the ports tree..."
 			[ ${VERBOSE} -gt 0 ] || quiet="-q"
-			git clone --depth=1 ${quiet} ${GIT_URL} ${PTMNT} || err 1 " fail"
+			git clone --depth=1 ${quiet} -b ${BRANCH} ${GIT_URL} ${PTMNT} || err 1 " fail"
 			echo " done"
 			;;
 		esac
 		pset ${PTNAME} method ${METHOD}
+		pset ${PTNAME} timestamp $(date +%s)
 	else
 		pset ${PTNAME} method "-"
 	fi
@@ -210,6 +236,7 @@ if [ ${DELETE} -eq 1 ]; then
 	[ -d "${PTMNT}/ports" ] && PORTSMNT="${PTMNT}/ports"
 	${NULLMOUNT} | /usr/bin/grep -q "${PORTSMNT:-${PTMNT}} on" \
 		&& err 1 "Ports tree \"${PTNAME}\" is currently mounted and being used."
+	maybe_run_queued "${saved_argv}"
 	msg_n "Deleting portstree \"${PTNAME}\""
 	[ ${KEEP} -eq 0 ] && destroyfs ${PTMNT} ports
 	rm -rf ${POUDRIERED}/ports/${PTNAME} || :
@@ -223,6 +250,7 @@ if [ ${UPDATE} -eq 1 ]; then
 	[ -d "${PTMNT}/ports" ] && PORTSMNT="${PTMNT}/ports"
 	${NULLMOUNT} | /usr/bin/grep -q "${PORTSMNT:-${PTMNT}} on" \
 		&& err 1 "Ports tree \"${PTNAME}\" is currently mounted and being used."
+	maybe_run_queued "${saved_argv}"
 	msg "Updating portstree \"${PTNAME}\""
 	if [ -z "${METHOD}" -o ${METHOD} = "-" ]; then
 		METHOD=portsnap
@@ -230,12 +258,14 @@ if [ ${UPDATE} -eq 1 ]; then
 	fi
 	case ${METHOD} in
 	portsnap|"")
+		# additional portsnap arguments
+		PTARGS=$(check_portsnap_interactive)
 		if [ -d "${PTMNT}/snap" ]; then
 			SNAPDIR=${PTMNT}/snap
 		else
 			SNAPDIR=${PTMNT}/.snap
 		fi
-		/usr/sbin/portsnap -d ${SNAPDIR} -p ${PORTSMNT:-${PTMNT}} ${PSCOMMAND} alfred
+		/usr/sbin/portsnap ${PTARGS} -d ${SNAPDIR} -p ${PORTSMNT:-${PTMNT}} ${PSCOMMAND} alfred
 		;;
 	svn*)
 		msg_n "Updating the ports tree..."
@@ -257,5 +287,5 @@ if [ ${UPDATE} -eq 1 ]; then
 		;;
 	esac
 
-	date +%s > ${PORTSMNT:-${PTMNT}}/.poudriere.stamp
+	pset ${PTNAME} timestamp $(date +%s)
 fi

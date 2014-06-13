@@ -17,6 +17,7 @@
 
 
 
+
 VPATH = @srcdir@
 am__is_gnu_make = test -n '$(MAKEFILE_LIST)' && test -n '$(MAKELEVEL)'
 am__make_running_with_option = \
@@ -80,7 +81,9 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 pkglibexec_PROGRAMS = cpdup$(EXEEXT) dirempty$(EXEEXT) \
-	dirwatch$(EXEEXT) nc$(EXEEXT) rename$(EXEEXT) tsort$(EXEEXT)
+	dirwatch$(EXEEXT) nc$(EXEEXT) poudriered$(EXEEXT) \
+	rename$(EXEEXT) timestamp$(EXEEXT) tsort$(EXEEXT) \
+	jexecd$(EXEEXT) rexec$(EXEEXT)
 sbin_PROGRAMS = poudriered$(EXEEXT) pdctl$(EXEEXT)
 subdir = .
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
@@ -89,9 +92,10 @@ DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(top_srcdir)/src/etc/rc.d/poudriered.in $(dist_bin_SCRIPTS) \
 	$(dist_rc_SCRIPTS) depcomp $(dist_man_MANS) \
 	$(dist_assets_DATA) $(dist_awk_DATA) $(dist_btcss_DATA) \
-	$(dist_btimg_DATA) $(dist_btjs_DATA) $(dist_dtcss_DATA) \
+	$(dist_btfonts_DATA) $(dist_btjs_DATA) $(dist_dtcss_DATA) \
 	$(dist_dtimages_DATA) $(dist_dtjs_DATA) $(dist_html_DATA) \
-	$(dist_pkgdata_DATA) README compile install-sh missing
+	$(dist_pkgdata_DATA) $(dist_include_HEADERS) README compile \
+	install-sh missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
@@ -109,9 +113,15 @@ AM_V_AR = $(am__v_AR_@AM_V@)
 am__v_AR_ = $(am__v_AR_@AM_DEFAULT_V@)
 am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 = 
+libnv_a_AR = $(AR) $(ARFLAGS)
+libnv_a_LIBADD =
+am__dirstamp = $(am__leading_dot)dirstamp
+am_libnv_a_OBJECTS = external/libnv/dnvlist.$(OBJEXT) \
+	external/libnv/msgio.$(OBJEXT) external/libnv/nvlist.$(OBJEXT) \
+	external/libnv/nvpair.$(OBJEXT)
+libnv_a_OBJECTS = $(am_libnv_a_OBJECTS)
 libucl_a_AR = $(AR) $(ARFLAGS)
 libucl_a_LIBADD =
-am__dirstamp = $(am__leading_dot)dirstamp
 am_libucl_a_OBJECTS =  \
 	external/libucl/src/libucl_a-ucl_emitter.$(OBJEXT) \
 	external/libucl/src/libucl_a-ucl_hash.$(OBJEXT) \
@@ -123,11 +133,12 @@ am__installdirs = "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(sbindir)" \
 	"$(DESTDIR)$(bindir)" "$(DESTDIR)$(rcdir)" \
 	"$(DESTDIR)$(man8dir)" "$(DESTDIR)$(assetsdir)" \
 	"$(DESTDIR)$(awkdir)" "$(DESTDIR)$(btcssdir)" \
-	"$(DESTDIR)$(btimgdir)" "$(DESTDIR)$(btjsdir)" \
+	"$(DESTDIR)$(btfontsdir)" "$(DESTDIR)$(btjsdir)" \
 	"$(DESTDIR)$(dtcssdir)" "$(DESTDIR)$(dtimagesdir)" \
 	"$(DESTDIR)$(dtjsdir)" "$(DESTDIR)$(htmldir)" \
-	"$(DESTDIR)$(pkgdatadir)" "$(DESTDIR)$(hookdir)" \
-	"$(DESTDIR)$(sysconfdir)"
+	"$(DESTDIR)$(pkgdatadir)" "$(DESTDIR)$(examplesdir)" \
+	"$(DESTDIR)$(hookdir)" "$(DESTDIR)$(sysconfdir)" \
+	"$(DESTDIR)$(includedir)"
 PROGRAMS = $(pkglibexec_PROGRAMS) $(sbin_PROGRAMS)
 am_cpdup_OBJECTS = src/libexec/poudriere/cpdup/cpdup-cpdup.$(OBJEXT) \
 	src/libexec/poudriere/cpdup/cpdup-hcproto.$(OBJEXT) \
@@ -147,6 +158,12 @@ am_dirwatch_OBJECTS =  \
 	src/libexec/poudriere/dirwatch/dirwatch.$(OBJEXT)
 dirwatch_OBJECTS = $(am_dirwatch_OBJECTS)
 dirwatch_LDADD = $(LDADD)
+am_jexecd_OBJECTS =  \
+	src/libexec/poudriere/jexecd/jexecd-jexecd.$(OBJEXT)
+jexecd_OBJECTS = $(am_jexecd_OBJECTS)
+jexecd_DEPENDENCIES = libnv.a
+jexecd_LINK = $(CCLD) $(jexecd_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 am_nc_OBJECTS = src/libexec/poudriere/nc/nc.$(OBJEXT)
 nc_OBJECTS = $(am_nc_OBJECTS)
 nc_LDADD = $(LDADD)
@@ -168,6 +185,15 @@ poudriered_LINK = $(CCLD) $(poudriered_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 am_rename_OBJECTS = src/libexec/poudriere/rename/rename.$(OBJEXT)
 rename_OBJECTS = $(am_rename_OBJECTS)
 rename_LDADD = $(LDADD)
+am_rexec_OBJECTS = src/libexec/poudriere/rexec/rexec-rexec.$(OBJEXT)
+rexec_OBJECTS = $(am_rexec_OBJECTS)
+rexec_DEPENDENCIES = libnv.a
+rexec_LINK = $(CCLD) $(rexec_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+am_timestamp_OBJECTS =  \
+	src/libexec/poudriere/timestamp/timestamp.$(OBJEXT)
+timestamp_OBJECTS = $(am_timestamp_OBJECTS)
+timestamp_LDADD = $(LDADD)
 am_tsort_OBJECTS = src/libexec/poudriere/tsort/tsort.$(OBJEXT)
 tsort_OBJECTS = $(am_tsort_OBJECTS)
 tsort_LDADD = $(LDADD)
@@ -231,12 +257,15 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(libucl_a_SOURCES) $(cpdup_SOURCES) $(dirempty_SOURCES) \
-	$(dirwatch_SOURCES) $(nc_SOURCES) $(pdctl_SOURCES) \
-	$(poudriered_SOURCES) $(rename_SOURCES) $(tsort_SOURCES)
-DIST_SOURCES = $(libucl_a_SOURCES) $(cpdup_SOURCES) \
-	$(dirempty_SOURCES) $(dirwatch_SOURCES) $(nc_SOURCES) \
-	$(pdctl_SOURCES) $(poudriered_SOURCES) $(rename_SOURCES) \
+SOURCES = $(libnv_a_SOURCES) $(libucl_a_SOURCES) $(cpdup_SOURCES) \
+	$(dirempty_SOURCES) $(dirwatch_SOURCES) $(jexecd_SOURCES) \
+	$(nc_SOURCES) $(pdctl_SOURCES) $(poudriered_SOURCES) \
+	$(rename_SOURCES) $(rexec_SOURCES) $(timestamp_SOURCES) \
+	$(tsort_SOURCES)
+DIST_SOURCES = $(libnv_a_SOURCES) $(libucl_a_SOURCES) $(cpdup_SOURCES) \
+	$(dirempty_SOURCES) $(dirwatch_SOURCES) $(jexecd_SOURCES) \
+	$(nc_SOURCES) $(pdctl_SOURCES) $(poudriered_SOURCES) \
+	$(rename_SOURCES) $(rexec_SOURCES) $(timestamp_SOURCES) \
 	$(tsort_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
@@ -247,9 +276,11 @@ man8dir = $(mandir)/man8
 NROFF = nroff
 MANS = $(dist_man_MANS)
 DATA = $(dist_assets_DATA) $(dist_awk_DATA) $(dist_btcss_DATA) \
-	$(dist_btimg_DATA) $(dist_btjs_DATA) $(dist_dtcss_DATA) \
+	$(dist_btfonts_DATA) $(dist_btjs_DATA) $(dist_dtcss_DATA) \
 	$(dist_dtimages_DATA) $(dist_dtjs_DATA) $(dist_html_DATA) \
-	$(dist_pkgdata_DATA) $(hook_DATA) $(sysconf_DATA)
+	$(dist_pkgdata_DATA) $(examples_DATA) $(hook_DATA) \
+	$(sysconf_DATA)
+HEADERS = $(dist_include_HEADERS)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 # Read a list of newline-separated strings from the standard input,
 # and print each of them once, without duplicates.  Input order is
@@ -354,14 +385,14 @@ dvidir = @dvidir@
 exec_prefix = @exec_prefix@
 host_alias = @host_alias@
 htmldir = $(pkgdatadir)/html
-includedir = @includedir@
+includedir = $(pkgdatadir)/include
 infodir = @infodir@
 install_sh = @install_sh@
 libdir = @libdir@
 libexecdir = @libexecdir@
 localedir = @localedir@
 localstatedir = @localstatedir@
-mandir = @mandir@
+mandir = $(prefix)/man
 mkdir_p = @mkdir_p@
 oldincludedir = @oldincludedir@
 pdfdir = @pdfdir@
@@ -377,23 +408,26 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 CLEANFILES = $(dist_rc_SCRIPTS)
+AM_CFLAGS = -Wall -pipe -O2
 awkdir = $(pkgdatadir)/awk
 assetsdir = $(htmldir)/assets
-bootstrapdir = $(assetsdir)/bootstrap
+bootstrapdir = $(assetsdir)/bootstrap-3.1.1
 btcssdir = $(bootstrapdir)/css
 btjsdir = $(bootstrapdir)/js
-btimgdir = $(bootstrapdir)/img
-datatablesdir = $(assetsdir)/dataTables
+btfontsdir = $(bootstrapdir)/fonts
+datatablesdir = $(assetsdir)/DataTables-1.10.0
 dtcssdir = $(datatablesdir)/css
 dtimagesdir = $(datatablesdir)/images
 dtjsdir = $(datatablesdir)/js
 rcdir = $(sysconfdir)/rc.d
 hookdir = $(sysconfdir)/poudriere.d/hooks
+examplesdir = $(datadir)/examples/$(PACKAGE_NAME)
 dist_bin_SCRIPTS = src/bin/poudriere
 dist_man_MANS = src/bin/poudriere.8
 sysconf_DATA = src/etc/poudriere.conf.sample \
 		src/etc/poudriered.conf.sample
 
+examples_DATA = src/share/examples/poudriere/nginx.conf.sample
 hook_DATA = src/etc/poudriere.d/hooks/bulk.sh.sample \
 		src/etc/poudriere.d/hooks/pkgbuild.sh.sample
 
@@ -401,53 +435,75 @@ dist_pkgdata_DATA = src/share/poudriere/bulk.sh \
 			src/share/poudriere/clean.sh \
 			src/share/poudriere/common.sh \
 			src/share/poudriere/daemon.sh \
-			src/share/poudriere/common.sh.dragonfly \
-			src/share/poudriere/common.sh.freebsd \
 			src/share/poudriere/distclean.sh \
 			src/share/poudriere/jail.sh \
 			src/share/poudriere/options.sh \
 			src/share/poudriere/pkgclean.sh \
 			src/share/poudriere/ports.sh \
 			src/share/poudriere/processonelog.sh \
-			src/share/poudriere/processonelog2.sh \
 			src/share/poudriere/queue.sh \
 			src/share/poudriere/status.sh \
 			src/share/poudriere/testport.sh
 
+dist_include_HEADERS = \
+			src/share/poudriere/include/common.sh.dragonfly \
+			src/share/poudriere/include/common.sh.freebsd \
+			src/share/poudriere/include/display.sh \
+			src/share/poudriere/include/html.sh \
+			src/share/poudriere/include/hash.sh \
+			src/share/poudriere/include/fs.sh \
+			src/share/poudriere/include/messages.sh \
+			src/share/poudriere/include/parallel.sh
+
 dist_awk_DATA = src/share/poudriere/awk/dependency_loop.awk \
 		src/share/poudriere/awk/humanize.awk \
 		src/share/poudriere/awk/json.awk \
+		src/share/poudriere/awk/json_jail.awk \
+		src/share/poudriere/awk/json_top.awk \
+		src/share/poudriere/awk/processonelog2.awk \
 		src/share/poudriere/awk/siginfo_buildtime.awk
 
-dist_html_DATA = src/share/poudriere/html/index.html
+dist_html_DATA = src/share/poudriere/html/build.html \
+			src/share/poudriere/html/index.html \
+			src/share/poudriere/html/jail.html \
+			src/share/poudriere/html/robots.txt
+
 dist_assets_DATA = src/share/poudriere/html/assets/poudriere.js \
-			src/share/poudriere/html/assets/logo.jpg \
+			src/share/poudriere/html/assets/logo.svg \
+			src/share/poudriere/html/assets/favicon.ico \
 			src/share/poudriere/html/assets/poudriere.css \
-			src/share/poudriere/html/assets/jquery-1.9.1.min.js
+			src/share/poudriere/html/assets/jquery-1.11.1.js \
+			src/share/poudriere/html/assets/jquery-1.11.1.min.js \
+			src/share/poudriere/html/assets/jquery-1.11.1.min.map \
+			src/share/poudriere/html/assets/jquery.dataTables.rowGrouping-1.2.9.js
 
-dist_btjs_DATA = src/share/poudriere/html/assets/bootstrap/js/bootstrap.min.js
-dist_btimg_DATA = src/share/poudriere/html/assets/bootstrap/img/glyphicons-halflings-white.png \
-			src/share/poudriere/html/assets/bootstrap/img/glyphicons-halflings.png
+dist_btjs_DATA = src/share/poudriere/html/assets/bootstrap-3.1.1/js/bootstrap.min.js
+dist_btfonts_DATA = src/share/poudriere/html/assets/bootstrap-3.1.1/fonts/glyphicons-halflings-regular.eot \
+			src/share/poudriere/html/assets/bootstrap-3.1.1/fonts/glyphicons-halflings-regular.svg \
+			src/share/poudriere/html/assets/bootstrap-3.1.1/fonts/glyphicons-halflings-regular.ttf \
+			src/share/poudriere/html/assets/bootstrap-3.1.1/fonts/glyphicons-halflings-regular.woff
 
-dist_btcss_DATA = src/share/poudriere/html/assets/bootstrap/css/bootstrap-responsive.min.css \
-			src/share/poudriere/html/assets/bootstrap/css/bootstrap.min.css
+dist_btcss_DATA = src/share/poudriere/html/assets/bootstrap-3.1.1/css/bootstrap-theme.min.css \
+			src/share/poudriere/html/assets/bootstrap-3.1.1/css/bootstrap.min.css
 
-dist_dtcss_DATA = src/share/poudriere/html/assets/dataTables/css/jquery.dataTables.css
-dist_dtjs_DATA = src/share/poudriere/html/assets/dataTables/js/jquery.dataTables.min.js
-dist_dtimages_DATA = src/share/poudriere/html/assets/dataTables/images/back_disabled.png \
-			src/share/poudriere/html/assets/dataTables/images/back_enabled.png \
-			src/share/poudriere/html/assets/dataTables/images/back_enabled_hover.png \
-			src/share/poudriere/html/assets/dataTables/images/forward_disabled.png \
-			src/share/poudriere/html/assets/dataTables/images/forward_enabled.png \
-			src/share/poudriere/html/assets/dataTables/images/forward_enabled_hover.png \
-			src/share/poudriere/html/assets/dataTables/images/sort_asc.png \
-			src/share/poudriere/html/assets/dataTables/images/sort_asc_disabled.png \
-			src/share/poudriere/html/assets/dataTables/images/sort_both.png \
-			src/share/poudriere/html/assets/dataTables/images/sort_desc.png \
-			src/share/poudriere/html/assets/dataTables/images/sort_desc_disabled.png
+dist_dtcss_DATA = src/share/poudriere/html/assets/DataTables-1.10.0/css/jquery.dataTables.min.css \
+			src/share/poudriere/html/assets/DataTables-1.10.0/css/jquery.dataTables_themeroller.min.css
+
+dist_dtjs_DATA = src/share/poudriere/html/assets/DataTables-1.10.0/js/jquery.dataTables.min.js
+dist_dtimages_DATA = src/share/poudriere/html/assets/DataTables-1.10.0/images/back_disabled.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/back_enabled.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/back_enabled_hover.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/forward_disabled.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/forward_enabled.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/forward_enabled_hover.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/sort_asc.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/sort_asc_disabled.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/sort_both.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/sort_desc.png \
+			src/share/poudriere/html/assets/DataTables-1.10.0/images/sort_desc_disabled.png
 
 dist_rc_SCRIPTS = src/etc/rc.d/poudriered
-noinst_LIBRARIES = libucl.a
+noinst_LIBRARIES = libucl.a libnv.a
 AUTOMAKE_OPTIONS = subdir-objects
 rename_SOURCES = src/libexec/poudriere/rename/rename.c
 cpdup_SOURCES = src/libexec/poudriere/cpdup/cpdup.c \
@@ -462,6 +518,7 @@ cpdup_CFLAGS = -D_ST_FLAGS_PRESENT_=1
 dirempty_SOURCES = src/libexec/poudriere/dirempty/dirempty.c
 dirwatch_SOURCES = src/libexec/poudriere/dirwatch/dirwatch.c
 nc_SOURCES = src/libexec/poudriere/nc/nc.c
+timestamp_SOURCES = src/libexec/poudriere/timestamp/timestamp.c
 tsort_SOURCES = src/libexec/poudriere/tsort/tsort.c
 libucl_a_SOURCES = external/libucl/src/ucl_emitter.c \
 			external/libucl/src/ucl_hash.c \
@@ -480,6 +537,11 @@ poudriered_SOURCES = src/poudriered/poudriered.c \
 			src/poudriered/jail.c \
 			src/poudriered/scgi.c
 
+libnv_a_SOURCES = external/libnv/dnvlist.c \
+			external/libnv/msgio.c \
+			external/libnv/nvlist.c \
+			external/libnv/nvpair.c
+
 poudriered_CFLAGS = -DPREFIX=\"$(prefix)\" \
 			-I$(top_srcdir)/external/libucl/include
 
@@ -494,6 +556,16 @@ pdctl_CFLAGS = -DPREFIX=\"$(prefix)\" \
 pdctl_LDADD = libucl.a \
 			-lsbuf
 
+jexecd_SOURCES = src/libexec/poudriere/jexecd/jexecd.c
+jexecd_CFLAGS = -I$(top_srcdir)/external/libnv
+jexecd_LDADD = libnv.a \
+		-lsbuf \
+		-lutil \
+		-ljail
+
+rexec_SOURCES = src/libexec/poudriere/rexec/rexec.c
+rexec_CFLAGS = -I$(top_srcdir)/external/libnv
+rexec_LDADD = libnv.a
 all: all-am
 
 .SUFFIXES:
@@ -552,6 +624,25 @@ src/etc/rc.d/poudriered: $(top_builddir)/config.status $(top_srcdir)/src/etc/rc.
 
 clean-noinstLIBRARIES:
 	-test -z "$(noinst_LIBRARIES)" || rm -f $(noinst_LIBRARIES)
+external/libnv/$(am__dirstamp):
+	@$(MKDIR_P) external/libnv
+	@: > external/libnv/$(am__dirstamp)
+external/libnv/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) external/libnv/$(DEPDIR)
+	@: > external/libnv/$(DEPDIR)/$(am__dirstamp)
+external/libnv/dnvlist.$(OBJEXT): external/libnv/$(am__dirstamp) \
+	external/libnv/$(DEPDIR)/$(am__dirstamp)
+external/libnv/msgio.$(OBJEXT): external/libnv/$(am__dirstamp) \
+	external/libnv/$(DEPDIR)/$(am__dirstamp)
+external/libnv/nvlist.$(OBJEXT): external/libnv/$(am__dirstamp) \
+	external/libnv/$(DEPDIR)/$(am__dirstamp)
+external/libnv/nvpair.$(OBJEXT): external/libnv/$(am__dirstamp) \
+	external/libnv/$(DEPDIR)/$(am__dirstamp)
+
+libnv.a: $(libnv_a_OBJECTS) $(libnv_a_DEPENDENCIES) $(EXTRA_libnv_a_DEPENDENCIES) 
+	$(AM_V_at)-rm -f libnv.a
+	$(AM_V_AR)$(libnv_a_AR) libnv.a $(libnv_a_OBJECTS) $(libnv_a_LIBADD)
+	$(AM_V_at)$(RANLIB) libnv.a
 external/libucl/src/$(am__dirstamp):
 	@$(MKDIR_P) external/libucl/src
 	@: > external/libucl/src/$(am__dirstamp)
@@ -716,6 +807,19 @@ src/libexec/poudriere/dirwatch/dirwatch.$(OBJEXT):  \
 dirwatch$(EXEEXT): $(dirwatch_OBJECTS) $(dirwatch_DEPENDENCIES) $(EXTRA_dirwatch_DEPENDENCIES) 
 	@rm -f dirwatch$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(dirwatch_OBJECTS) $(dirwatch_LDADD) $(LIBS)
+src/libexec/poudriere/jexecd/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/jexecd
+	@: > src/libexec/poudriere/jexecd/$(am__dirstamp)
+src/libexec/poudriere/jexecd/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/jexecd/$(DEPDIR)
+	@: > src/libexec/poudriere/jexecd/$(DEPDIR)/$(am__dirstamp)
+src/libexec/poudriere/jexecd/jexecd-jexecd.$(OBJEXT):  \
+	src/libexec/poudriere/jexecd/$(am__dirstamp) \
+	src/libexec/poudriere/jexecd/$(DEPDIR)/$(am__dirstamp)
+
+jexecd$(EXEEXT): $(jexecd_OBJECTS) $(jexecd_DEPENDENCIES) $(EXTRA_jexecd_DEPENDENCIES) 
+	@rm -f jexecd$(EXEEXT)
+	$(AM_V_CCLD)$(jexecd_LINK) $(jexecd_OBJECTS) $(jexecd_LDADD) $(LIBS)
 src/libexec/poudriere/nc/$(am__dirstamp):
 	@$(MKDIR_P) src/libexec/poudriere/nc
 	@: > src/libexec/poudriere/nc/$(am__dirstamp)
@@ -779,6 +883,32 @@ src/libexec/poudriere/rename/rename.$(OBJEXT):  \
 rename$(EXEEXT): $(rename_OBJECTS) $(rename_DEPENDENCIES) $(EXTRA_rename_DEPENDENCIES) 
 	@rm -f rename$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(rename_OBJECTS) $(rename_LDADD) $(LIBS)
+src/libexec/poudriere/rexec/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/rexec
+	@: > src/libexec/poudriere/rexec/$(am__dirstamp)
+src/libexec/poudriere/rexec/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/rexec/$(DEPDIR)
+	@: > src/libexec/poudriere/rexec/$(DEPDIR)/$(am__dirstamp)
+src/libexec/poudriere/rexec/rexec-rexec.$(OBJEXT):  \
+	src/libexec/poudriere/rexec/$(am__dirstamp) \
+	src/libexec/poudriere/rexec/$(DEPDIR)/$(am__dirstamp)
+
+rexec$(EXEEXT): $(rexec_OBJECTS) $(rexec_DEPENDENCIES) $(EXTRA_rexec_DEPENDENCIES) 
+	@rm -f rexec$(EXEEXT)
+	$(AM_V_CCLD)$(rexec_LINK) $(rexec_OBJECTS) $(rexec_LDADD) $(LIBS)
+src/libexec/poudriere/timestamp/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/timestamp
+	@: > src/libexec/poudriere/timestamp/$(am__dirstamp)
+src/libexec/poudriere/timestamp/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/libexec/poudriere/timestamp/$(DEPDIR)
+	@: > src/libexec/poudriere/timestamp/$(DEPDIR)/$(am__dirstamp)
+src/libexec/poudriere/timestamp/timestamp.$(OBJEXT):  \
+	src/libexec/poudriere/timestamp/$(am__dirstamp) \
+	src/libexec/poudriere/timestamp/$(DEPDIR)/$(am__dirstamp)
+
+timestamp$(EXEEXT): $(timestamp_OBJECTS) $(timestamp_DEPENDENCIES) $(EXTRA_timestamp_DEPENDENCIES) 
+	@rm -f timestamp$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(timestamp_OBJECTS) $(timestamp_LDADD) $(LIBS)
 src/libexec/poudriere/tsort/$(am__dirstamp):
 	@$(MKDIR_P) src/libexec/poudriere/tsort
 	@: > src/libexec/poudriere/tsort/$(am__dirstamp)
@@ -865,12 +995,16 @@ uninstall-dist_rcSCRIPTS:
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
+	-rm -f external/libnv/*.$(OBJEXT)
 	-rm -f external/libucl/src/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/cpdup/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/dirempty/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/dirwatch/*.$(OBJEXT)
+	-rm -f src/libexec/poudriere/jexecd/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/nc/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/rename/*.$(OBJEXT)
+	-rm -f src/libexec/poudriere/rexec/*.$(OBJEXT)
+	-rm -f src/libexec/poudriere/timestamp/*.$(OBJEXT)
 	-rm -f src/libexec/poudriere/tsort/*.$(OBJEXT)
 	-rm -f src/pdctl/*.$(OBJEXT)
 	-rm -f src/poudriered/*.$(OBJEXT)
@@ -878,6 +1012,10 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@external/libnv/$(DEPDIR)/dnvlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@external/libnv/$(DEPDIR)/msgio.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@external/libnv/$(DEPDIR)/nvlist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@external/libnv/$(DEPDIR)/nvpair.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@external/libucl/src/$(DEPDIR)/libucl_a-ucl_emitter.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@external/libucl/src/$(DEPDIR)/libucl_a-ucl_hash.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@external/libucl/src/$(DEPDIR)/libucl_a-ucl_parser.Po@am__quote@
@@ -891,8 +1029,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/cpdup/$(DEPDIR)/cpdup-misc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/dirempty/$(DEPDIR)/dirempty.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/dirwatch/$(DEPDIR)/dirwatch.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/nc/$(DEPDIR)/nc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/rename/$(DEPDIR)/rename.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/timestamp/$(DEPDIR)/timestamp.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/libexec/poudriere/tsort/$(DEPDIR)/tsort.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/pdctl/$(DEPDIR)/pdctl-pdctl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/poudriered/$(DEPDIR)/poudriered-jail.Po@am__quote@
@@ -1071,6 +1212,20 @@ src/libexec/poudriere/cpdup/cpdup-md5.obj: src/libexec/poudriere/cpdup/md5.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cpdup_CFLAGS) $(CFLAGS) -c -o src/libexec/poudriere/cpdup/cpdup-md5.obj `if test -f 'src/libexec/poudriere/cpdup/md5.c'; then $(CYGPATH_W) 'src/libexec/poudriere/cpdup/md5.c'; else $(CYGPATH_W) '$(srcdir)/src/libexec/poudriere/cpdup/md5.c'; fi`
 
+src/libexec/poudriere/jexecd/jexecd-jexecd.o: src/libexec/poudriere/jexecd/jexecd.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(jexecd_CFLAGS) $(CFLAGS) -MT src/libexec/poudriere/jexecd/jexecd-jexecd.o -MD -MP -MF src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Tpo -c -o src/libexec/poudriere/jexecd/jexecd-jexecd.o `test -f 'src/libexec/poudriere/jexecd/jexecd.c' || echo '$(srcdir)/'`src/libexec/poudriere/jexecd/jexecd.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Tpo src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/libexec/poudriere/jexecd/jexecd.c' object='src/libexec/poudriere/jexecd/jexecd-jexecd.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(jexecd_CFLAGS) $(CFLAGS) -c -o src/libexec/poudriere/jexecd/jexecd-jexecd.o `test -f 'src/libexec/poudriere/jexecd/jexecd.c' || echo '$(srcdir)/'`src/libexec/poudriere/jexecd/jexecd.c
+
+src/libexec/poudriere/jexecd/jexecd-jexecd.obj: src/libexec/poudriere/jexecd/jexecd.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(jexecd_CFLAGS) $(CFLAGS) -MT src/libexec/poudriere/jexecd/jexecd-jexecd.obj -MD -MP -MF src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Tpo -c -o src/libexec/poudriere/jexecd/jexecd-jexecd.obj `if test -f 'src/libexec/poudriere/jexecd/jexecd.c'; then $(CYGPATH_W) 'src/libexec/poudriere/jexecd/jexecd.c'; else $(CYGPATH_W) '$(srcdir)/src/libexec/poudriere/jexecd/jexecd.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Tpo src/libexec/poudriere/jexecd/$(DEPDIR)/jexecd-jexecd.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/libexec/poudriere/jexecd/jexecd.c' object='src/libexec/poudriere/jexecd/jexecd-jexecd.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(jexecd_CFLAGS) $(CFLAGS) -c -o src/libexec/poudriere/jexecd/jexecd-jexecd.obj `if test -f 'src/libexec/poudriere/jexecd/jexecd.c'; then $(CYGPATH_W) 'src/libexec/poudriere/jexecd/jexecd.c'; else $(CYGPATH_W) '$(srcdir)/src/libexec/poudriere/jexecd/jexecd.c'; fi`
+
 src/pdctl/pdctl-pdctl.o: src/pdctl/pdctl.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pdctl_CFLAGS) $(CFLAGS) -MT src/pdctl/pdctl-pdctl.o -MD -MP -MF src/pdctl/$(DEPDIR)/pdctl-pdctl.Tpo -c -o src/pdctl/pdctl-pdctl.o `test -f 'src/pdctl/pdctl.c' || echo '$(srcdir)/'`src/pdctl/pdctl.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/pdctl/$(DEPDIR)/pdctl-pdctl.Tpo src/pdctl/$(DEPDIR)/pdctl-pdctl.Po
@@ -1154,6 +1309,20 @@ src/poudriered/poudriered-scgi.obj: src/poudriered/scgi.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/poudriered/scgi.c' object='src/poudriered/poudriered-scgi.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(poudriered_CFLAGS) $(CFLAGS) -c -o src/poudriered/poudriered-scgi.obj `if test -f 'src/poudriered/scgi.c'; then $(CYGPATH_W) 'src/poudriered/scgi.c'; else $(CYGPATH_W) '$(srcdir)/src/poudriered/scgi.c'; fi`
+
+src/libexec/poudriere/rexec/rexec-rexec.o: src/libexec/poudriere/rexec/rexec.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(rexec_CFLAGS) $(CFLAGS) -MT src/libexec/poudriere/rexec/rexec-rexec.o -MD -MP -MF src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Tpo -c -o src/libexec/poudriere/rexec/rexec-rexec.o `test -f 'src/libexec/poudriere/rexec/rexec.c' || echo '$(srcdir)/'`src/libexec/poudriere/rexec/rexec.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Tpo src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/libexec/poudriere/rexec/rexec.c' object='src/libexec/poudriere/rexec/rexec-rexec.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(rexec_CFLAGS) $(CFLAGS) -c -o src/libexec/poudriere/rexec/rexec-rexec.o `test -f 'src/libexec/poudriere/rexec/rexec.c' || echo '$(srcdir)/'`src/libexec/poudriere/rexec/rexec.c
+
+src/libexec/poudriere/rexec/rexec-rexec.obj: src/libexec/poudriere/rexec/rexec.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(rexec_CFLAGS) $(CFLAGS) -MT src/libexec/poudriere/rexec/rexec-rexec.obj -MD -MP -MF src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Tpo -c -o src/libexec/poudriere/rexec/rexec-rexec.obj `if test -f 'src/libexec/poudriere/rexec/rexec.c'; then $(CYGPATH_W) 'src/libexec/poudriere/rexec/rexec.c'; else $(CYGPATH_W) '$(srcdir)/src/libexec/poudriere/rexec/rexec.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Tpo src/libexec/poudriere/rexec/$(DEPDIR)/rexec-rexec.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/libexec/poudriere/rexec/rexec.c' object='src/libexec/poudriere/rexec/rexec-rexec.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(rexec_CFLAGS) $(CFLAGS) -c -o src/libexec/poudriere/rexec/rexec-rexec.obj `if test -f 'src/libexec/poudriere/rexec/rexec.c'; then $(CYGPATH_W) 'src/libexec/poudriere/rexec/rexec.c'; else $(CYGPATH_W) '$(srcdir)/src/libexec/poudriere/rexec/rexec.c'; fi`
 install-man8: $(dist_man_MANS)
 	@$(NORMAL_INSTALL)
 	@list1=''; \
@@ -1260,27 +1429,27 @@ uninstall-dist_btcssDATA:
 	@list='$(dist_btcss_DATA)'; test -n "$(btcssdir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
 	dir='$(DESTDIR)$(btcssdir)'; $(am__uninstall_files_from_dir)
-install-dist_btimgDATA: $(dist_btimg_DATA)
+install-dist_btfontsDATA: $(dist_btfonts_DATA)
 	@$(NORMAL_INSTALL)
-	@list='$(dist_btimg_DATA)'; test -n "$(btimgdir)" || list=; \
+	@list='$(dist_btfonts_DATA)'; test -n "$(btfontsdir)" || list=; \
 	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(btimgdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(btimgdir)" || exit 1; \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(btfontsdir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(btfontsdir)" || exit 1; \
 	fi; \
 	for p in $$list; do \
 	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
 	  echo "$$d$$p"; \
 	done | $(am__base_list) | \
 	while read files; do \
-	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(btimgdir)'"; \
-	  $(INSTALL_DATA) $$files "$(DESTDIR)$(btimgdir)" || exit $$?; \
+	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(btfontsdir)'"; \
+	  $(INSTALL_DATA) $$files "$(DESTDIR)$(btfontsdir)" || exit $$?; \
 	done
 
-uninstall-dist_btimgDATA:
+uninstall-dist_btfontsDATA:
 	@$(NORMAL_UNINSTALL)
-	@list='$(dist_btimg_DATA)'; test -n "$(btimgdir)" || list=; \
+	@list='$(dist_btfonts_DATA)'; test -n "$(btfontsdir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
-	dir='$(DESTDIR)$(btimgdir)'; $(am__uninstall_files_from_dir)
+	dir='$(DESTDIR)$(btfontsdir)'; $(am__uninstall_files_from_dir)
 install-dist_btjsDATA: $(dist_btjs_DATA)
 	@$(NORMAL_INSTALL)
 	@list='$(dist_btjs_DATA)'; test -n "$(btjsdir)" || list=; \
@@ -1407,6 +1576,27 @@ uninstall-dist_pkgdataDATA:
 	@list='$(dist_pkgdata_DATA)'; test -n "$(pkgdatadir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
 	dir='$(DESTDIR)$(pkgdatadir)'; $(am__uninstall_files_from_dir)
+install-examplesDATA: $(examples_DATA)
+	@$(NORMAL_INSTALL)
+	@list='$(examples_DATA)'; test -n "$(examplesdir)" || list=; \
+	if test -n "$$list"; then \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(examplesdir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(examplesdir)" || exit 1; \
+	fi; \
+	for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  echo "$$d$$p"; \
+	done | $(am__base_list) | \
+	while read files; do \
+	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(examplesdir)'"; \
+	  $(INSTALL_DATA) $$files "$(DESTDIR)$(examplesdir)" || exit $$?; \
+	done
+
+uninstall-examplesDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(examples_DATA)'; test -n "$(examplesdir)" || list=; \
+	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
+	dir='$(DESTDIR)$(examplesdir)'; $(am__uninstall_files_from_dir)
 install-hookDATA: $(hook_DATA)
 	@$(NORMAL_INSTALL)
 	@list='$(hook_DATA)'; test -n "$(hookdir)" || list=; \
@@ -1449,6 +1639,27 @@ uninstall-sysconfDATA:
 	@list='$(sysconf_DATA)'; test -n "$(sysconfdir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
 	dir='$(DESTDIR)$(sysconfdir)'; $(am__uninstall_files_from_dir)
+install-dist_includeHEADERS: $(dist_include_HEADERS)
+	@$(NORMAL_INSTALL)
+	@list='$(dist_include_HEADERS)'; test -n "$(includedir)" || list=; \
+	if test -n "$$list"; then \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(includedir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(includedir)" || exit 1; \
+	fi; \
+	for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  echo "$$d$$p"; \
+	done | $(am__base_list) | \
+	while read files; do \
+	  echo " $(INSTALL_HEADER) $$files '$(DESTDIR)$(includedir)'"; \
+	  $(INSTALL_HEADER) $$files "$(DESTDIR)$(includedir)" || exit $$?; \
+	done
+
+uninstall-dist_includeHEADERS:
+	@$(NORMAL_UNINSTALL)
+	@list='$(dist_include_HEADERS)'; test -n "$(includedir)" || list=; \
+	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
+	dir='$(DESTDIR)$(includedir)'; $(am__uninstall_files_from_dir)
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique
@@ -1672,9 +1883,10 @@ distcleancheck: distclean
 	       exit 1; } >&2
 check-am: all-am
 check: check-am
-all-am: Makefile $(LIBRARIES) $(PROGRAMS) $(SCRIPTS) $(MANS) $(DATA)
+all-am: Makefile $(LIBRARIES) $(PROGRAMS) $(SCRIPTS) $(MANS) $(DATA) \
+		$(HEADERS)
 installdirs:
-	for dir in "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(rcdir)" "$(DESTDIR)$(man8dir)" "$(DESTDIR)$(assetsdir)" "$(DESTDIR)$(awkdir)" "$(DESTDIR)$(btcssdir)" "$(DESTDIR)$(btimgdir)" "$(DESTDIR)$(btjsdir)" "$(DESTDIR)$(dtcssdir)" "$(DESTDIR)$(dtimagesdir)" "$(DESTDIR)$(dtjsdir)" "$(DESTDIR)$(htmldir)" "$(DESTDIR)$(pkgdatadir)" "$(DESTDIR)$(hookdir)" "$(DESTDIR)$(sysconfdir)"; do \
+	for dir in "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(rcdir)" "$(DESTDIR)$(man8dir)" "$(DESTDIR)$(assetsdir)" "$(DESTDIR)$(awkdir)" "$(DESTDIR)$(btcssdir)" "$(DESTDIR)$(btfontsdir)" "$(DESTDIR)$(btjsdir)" "$(DESTDIR)$(dtcssdir)" "$(DESTDIR)$(dtimagesdir)" "$(DESTDIR)$(dtjsdir)" "$(DESTDIR)$(htmldir)" "$(DESTDIR)$(pkgdatadir)" "$(DESTDIR)$(examplesdir)" "$(DESTDIR)$(hookdir)" "$(DESTDIR)$(sysconfdir)" "$(DESTDIR)$(includedir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -1704,6 +1916,8 @@ clean-generic:
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
+	-rm -f external/libnv/$(DEPDIR)/$(am__dirstamp)
+	-rm -f external/libnv/$(am__dirstamp)
 	-rm -f external/libucl/src/$(DEPDIR)/$(am__dirstamp)
 	-rm -f external/libucl/src/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/cpdup/$(DEPDIR)/$(am__dirstamp)
@@ -1712,10 +1926,16 @@ distclean-generic:
 	-rm -f src/libexec/poudriere/dirempty/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/dirwatch/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/dirwatch/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/jexecd/$(DEPDIR)/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/jexecd/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/nc/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/nc/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/rename/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/rename/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/rexec/$(DEPDIR)/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/rexec/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/timestamp/$(DEPDIR)/$(am__dirstamp)
+	-rm -f src/libexec/poudriere/timestamp/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/tsort/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/libexec/poudriere/tsort/$(am__dirstamp)
 	-rm -f src/pdctl/$(DEPDIR)/$(am__dirstamp)
@@ -1733,7 +1953,7 @@ clean-am: clean-generic clean-noinstLIBRARIES clean-pkglibexecPROGRAMS \
 
 distclean: distclean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
-	-rm -rf external/libucl/src/$(DEPDIR) src/libexec/poudriere/cpdup/$(DEPDIR) src/libexec/poudriere/dirempty/$(DEPDIR) src/libexec/poudriere/dirwatch/$(DEPDIR) src/libexec/poudriere/nc/$(DEPDIR) src/libexec/poudriere/rename/$(DEPDIR) src/libexec/poudriere/tsort/$(DEPDIR) src/pdctl/$(DEPDIR) src/poudriered/$(DEPDIR)
+	-rm -rf external/libnv/$(DEPDIR) external/libucl/src/$(DEPDIR) src/libexec/poudriere/cpdup/$(DEPDIR) src/libexec/poudriere/dirempty/$(DEPDIR) src/libexec/poudriere/dirwatch/$(DEPDIR) src/libexec/poudriere/jexecd/$(DEPDIR) src/libexec/poudriere/nc/$(DEPDIR) src/libexec/poudriere/rename/$(DEPDIR) src/libexec/poudriere/rexec/$(DEPDIR) src/libexec/poudriere/timestamp/$(DEPDIR) src/libexec/poudriere/tsort/$(DEPDIR) src/pdctl/$(DEPDIR) src/poudriered/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
@@ -1751,11 +1971,12 @@ info: info-am
 info-am:
 
 install-data-am: install-dist_assetsDATA install-dist_awkDATA \
-	install-dist_btcssDATA install-dist_btimgDATA \
+	install-dist_btcssDATA install-dist_btfontsDATA \
 	install-dist_btjsDATA install-dist_dtcssDATA \
 	install-dist_dtimagesDATA install-dist_dtjsDATA \
-	install-dist_htmlDATA install-dist_pkgdataDATA \
-	install-dist_rcSCRIPTS install-hookDATA install-man
+	install-dist_htmlDATA install-dist_includeHEADERS \
+	install-dist_pkgdataDATA install-dist_rcSCRIPTS \
+	install-examplesDATA install-hookDATA install-man
 
 install-dvi: install-dvi-am
 
@@ -1787,7 +2008,7 @@ installcheck-am:
 maintainer-clean: maintainer-clean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
-	-rm -rf external/libucl/src/$(DEPDIR) src/libexec/poudriere/cpdup/$(DEPDIR) src/libexec/poudriere/dirempty/$(DEPDIR) src/libexec/poudriere/dirwatch/$(DEPDIR) src/libexec/poudriere/nc/$(DEPDIR) src/libexec/poudriere/rename/$(DEPDIR) src/libexec/poudriere/tsort/$(DEPDIR) src/pdctl/$(DEPDIR) src/poudriered/$(DEPDIR)
+	-rm -rf external/libnv/$(DEPDIR) external/libucl/src/$(DEPDIR) src/libexec/poudriere/cpdup/$(DEPDIR) src/libexec/poudriere/dirempty/$(DEPDIR) src/libexec/poudriere/dirwatch/$(DEPDIR) src/libexec/poudriere/jexecd/$(DEPDIR) src/libexec/poudriere/nc/$(DEPDIR) src/libexec/poudriere/rename/$(DEPDIR) src/libexec/poudriere/rexec/$(DEPDIR) src/libexec/poudriere/timestamp/$(DEPDIR) src/libexec/poudriere/tsort/$(DEPDIR) src/pdctl/$(DEPDIR) src/poudriered/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
@@ -1805,10 +2026,11 @@ ps-am:
 
 uninstall-am: uninstall-dist_assetsDATA uninstall-dist_awkDATA \
 	uninstall-dist_binSCRIPTS uninstall-dist_btcssDATA \
-	uninstall-dist_btimgDATA uninstall-dist_btjsDATA \
+	uninstall-dist_btfontsDATA uninstall-dist_btjsDATA \
 	uninstall-dist_dtcssDATA uninstall-dist_dtimagesDATA \
 	uninstall-dist_dtjsDATA uninstall-dist_htmlDATA \
-	uninstall-dist_pkgdataDATA uninstall-dist_rcSCRIPTS \
+	uninstall-dist_includeHEADERS uninstall-dist_pkgdataDATA \
+	uninstall-dist_rcSCRIPTS uninstall-examplesDATA \
 	uninstall-hookDATA uninstall-man uninstall-pkglibexecPROGRAMS \
 	uninstall-sbinPROGRAMS uninstall-sysconfDATA
 
@@ -1827,27 +2049,29 @@ uninstall-man: uninstall-man8
 	install install-am install-data install-data-am \
 	install-dist_assetsDATA install-dist_awkDATA \
 	install-dist_binSCRIPTS install-dist_btcssDATA \
-	install-dist_btimgDATA install-dist_btjsDATA \
+	install-dist_btfontsDATA install-dist_btjsDATA \
 	install-dist_dtcssDATA install-dist_dtimagesDATA \
 	install-dist_dtjsDATA install-dist_htmlDATA \
-	install-dist_pkgdataDATA install-dist_rcSCRIPTS install-dvi \
-	install-dvi-am install-exec install-exec-am install-hookDATA \
-	install-html install-html-am install-info install-info-am \
-	install-man install-man8 install-pdf install-pdf-am \
-	install-pkglibexecPROGRAMS install-ps install-ps-am \
-	install-sbinPROGRAMS install-strip install-sysconfDATA \
-	installcheck installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-compile \
-	mostlyclean-generic pdf pdf-am ps ps-am tags tags-am uninstall \
-	uninstall-am uninstall-dist_assetsDATA uninstall-dist_awkDATA \
-	uninstall-dist_binSCRIPTS uninstall-dist_btcssDATA \
-	uninstall-dist_btimgDATA uninstall-dist_btjsDATA \
-	uninstall-dist_dtcssDATA uninstall-dist_dtimagesDATA \
-	uninstall-dist_dtjsDATA uninstall-dist_htmlDATA \
+	install-dist_includeHEADERS install-dist_pkgdataDATA \
+	install-dist_rcSCRIPTS install-dvi install-dvi-am \
+	install-examplesDATA install-exec install-exec-am \
+	install-hookDATA install-html install-html-am install-info \
+	install-info-am install-man install-man8 install-pdf \
+	install-pdf-am install-pkglibexecPROGRAMS install-ps \
+	install-ps-am install-sbinPROGRAMS install-strip \
+	install-sysconfDATA installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-compile mostlyclean-generic pdf pdf-am ps ps-am \
+	tags tags-am uninstall uninstall-am uninstall-dist_assetsDATA \
+	uninstall-dist_awkDATA uninstall-dist_binSCRIPTS \
+	uninstall-dist_btcssDATA uninstall-dist_btfontsDATA \
+	uninstall-dist_btjsDATA uninstall-dist_dtcssDATA \
+	uninstall-dist_dtimagesDATA uninstall-dist_dtjsDATA \
+	uninstall-dist_htmlDATA uninstall-dist_includeHEADERS \
 	uninstall-dist_pkgdataDATA uninstall-dist_rcSCRIPTS \
-	uninstall-hookDATA uninstall-man uninstall-man8 \
-	uninstall-pkglibexecPROGRAMS uninstall-sbinPROGRAMS \
-	uninstall-sysconfDATA
+	uninstall-examplesDATA uninstall-hookDATA uninstall-man \
+	uninstall-man8 uninstall-pkglibexecPROGRAMS \
+	uninstall-sbinPROGRAMS uninstall-sysconfDATA
 
 
 .PHONY:	gen-make-wiki

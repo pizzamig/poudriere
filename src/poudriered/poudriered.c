@@ -91,10 +91,11 @@ send_error(struct client *cl, const char *msg) {
 	ucl_object_t *umsg = NULL;
 	ucl_object_t *o;
 	
+	umsg = ucl_object_typed_new(UCL_OBJECT);
 	o = ucl_object_fromstring_common("error", 5, 0);
-	umsg = ucl_object_insert_key(umsg, o, "type", 4, true);
+	ucl_object_insert_key(umsg, o, "type", 4, true);
 	o = ucl_object_fromstring_common(msg, strlen(msg),UCL_STRING_TRIM);
-	umsg = ucl_object_insert_key(umsg, o, "message", 7, true);
+	ucl_object_insert_key(umsg, o, "message", 7, true);
 
 	send_object(cl, umsg);
 }
@@ -143,7 +144,7 @@ close_socket(int dummy) {
 	if (server_fd != -1)
 		close(server_fd);
 
-	ucl_object_t *o;
+	const ucl_object_t *o;
 	o = ucl_object_find_key(conf, "socket");
 
 	if (o == NULL || o->type != UCL_STRING) {
@@ -168,7 +169,7 @@ client_free(struct client *cl)
 }
 
 static bool
-valid_user(ucl_object_t *o, struct client *cl)
+valid_user(const ucl_object_t *o, struct client *cl)
 {
 	struct passwd *pw;
 
@@ -192,7 +193,7 @@ valid_user(ucl_object_t *o, struct client *cl)
 }
 
 static bool
-valid_group(ucl_object_t *o, struct client *cl)
+valid_group(const ucl_object_t *o, struct client *cl)
 {
 	struct group *gr;
 
@@ -216,9 +217,9 @@ valid_group(ucl_object_t *o, struct client *cl)
 }
 
 static int
-check_argument(ucl_object_t *cmd, struct client *cl, const char *arg) {
+check_argument(const ucl_object_t *cmd, struct client *cl, const char *arg) {
 
-	ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
+	const ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
 	ucl_object_iter_t it = NULL;
 
 	cred_cmds = ucl_object_find_key(cmd, "argument");
@@ -259,7 +260,7 @@ check_argument(ucl_object_t *cmd, struct client *cl, const char *arg) {
 }
 
 static bool
-is_arguments_allowed(ucl_object_t *a, ucl_object_t *cmd, struct client *cl)
+is_arguments_allowed(const ucl_object_t *a, const ucl_object_t *cmd, struct client *cl)
 {
 	int nbargs, ok, argc, argvl, i;
 	char **argv = NULL;
@@ -296,9 +297,9 @@ is_arguments_allowed(ucl_object_t *a, ucl_object_t *cmd, struct client *cl)
 }
 
 static bool
-is_command_allowed(ucl_object_t *req, struct client *cl, ucl_object_t **ret)
+is_command_allowed(const ucl_object_t *req, struct client *cl, const ucl_object_t **ret)
 {
-	ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
+	const ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
 	ucl_object_iter_t it = NULL;
 
 	*ret = NULL;
@@ -345,9 +346,9 @@ is_command_allowed(ucl_object_t *req, struct client *cl, ucl_object_t **ret)
 }
 
 static bool
-is_operation_allowed(ucl_object_t *o, struct client *cl)
+is_operation_allowed(const ucl_object_t *o, struct client *cl)
 {
-	ucl_object_t *creds, *cred, *tmp, *wild, *obj;
+	const ucl_object_t *creds, *cred, *tmp, *wild, *obj;
 	ucl_object_iter_t it = NULL;
 
 	creds = ucl_object_find_key(conf, "operation");
@@ -438,7 +439,7 @@ execute_cmd() {
 	char **argv;
 	char *buf, *tofree, *arg;
 	int argc, argvl;
-	ucl_object_t *o, *a, *l;
+	const ucl_object_t *o, *a, *l;
 
 	o = a = NULL;
 
@@ -509,9 +510,12 @@ process_queue(void) {
 }
 
 static bool
-append_to_queue(ucl_object_t *cmd)
+append_to_queue(const ucl_object_t *cmd)
 {
-	queue = ucl_array_append(queue, cmd);
+	if (queue == NULL)
+		queue = ucl_object_typed_new(UCL_ARRAY);
+
+	ucl_array_append(queue, ucl_object_ref(cmd));
 	syslog(LOG_INFO, "New command queued");
 
 	return (true);
@@ -520,7 +524,8 @@ append_to_queue(ucl_object_t *cmd)
 static void
 client_exec(struct client *cl)
 {
-	ucl_object_t *cmd, *c, *cmd_cred;
+	const ucl_object_t *cmd, *c, *cmd_cred;
+	ucl_object_t *msg;
 	bool cmd_allowed = false;
 
         syslog(LOG_INFO, "uid(%d) sent request: %s", cl->uid,
@@ -535,18 +540,19 @@ client_exec(struct client *cl)
 				close_socket(EXIT_SUCCESS);
 			} else if (!strcmp(ucl_object_tostring(c), "reload")) {
 				ucl_object_t *nconf = reload();
-				send_object(cl,
-				    ucl_object_insert_key(NULL,
+				msg = ucl_object_typed_new(UCL_OBJECT);
+				ucl_object_insert_key(msg,
 				    ucl_object_frombool(nconf != NULL),
-				    "reload", 6, true));
+				    "reload", 6, true);
+				send_object(cl, msg);
 			} else if (!strcmp(ucl_object_tostring(c), "queue")) {
 				send_object(cl, queue);
 			} else if (!strcmp(ucl_object_tostring(c), "status")) {
-				ucl_object_t *msg = NULL;
-				msg = ucl_object_insert_key(msg,
+				msg = ucl_object_typed_new(UCL_OBJECT);
+				ucl_object_insert_key(msg,
 				    ucl_object_fromstring(running ? "running" :
 				    "idle"), "state", 5, true);
-				msg = ucl_object_insert_key(msg, running ?
+				ucl_object_insert_key(msg, running ?
 				    running : ucl_object_new(), "data", 4,
 				    true);
 				send_object(cl, msg);
@@ -554,36 +560,34 @@ client_exec(struct client *cl)
 				ucl_object_t *msg = NULL;
 				ucl_object_t *o = jail_list();
 				if (o == NULL)
-					msg = ucl_object_insert_key(msg,
+					ucl_object_insert_key(msg,
 					    ucl_object_typed_new(UCL_ARRAY),
 					    "jail", 4, true);
 				else
-					msg = ucl_object_insert_key(msg, o,
+					ucl_object_insert_key(msg, o,
 					    "jail", 4, true);
 				send_object(cl, msg);
 			} else if (!strcmp(ucl_object_tostring(c), "ports")) {
 				ucl_object_t *msg = NULL;
 				ucl_object_t *o = ports_list();
 				if (o == NULL)
-					msg = ucl_object_insert_key(msg,
+					ucl_object_insert_key(msg,
 					    ucl_object_new(),
 					    "ports", 5, true);
 				else
-					msg = ucl_object_insert_key(msg, o,
+					ucl_object_insert_key(msg, o,
 					    "ports", 5, true);
 				send_object(cl, msg);
 			}
 		} else {
 			send_error(cl, "permission denied");
 		}
-		ucl_object_unref(cmd);
 		return;
 	}
 
 	c = ucl_object_find_key(cmd, "command");
 	if (c == NULL || c->type != UCL_STRING) {
 		send_error(cl, "No command specified");
-		ucl_object_unref(cmd);
 		return;
 	}
 	/* validate credentials */
@@ -600,14 +604,12 @@ client_exec(struct client *cl)
 	if (!cmd_allowed) {
 		/* still not allowed, let's check per args */
 		send_error(cl, "Permission denied");
-		ucl_object_unref(cmd);
 		return;
 	}
 
 	/* ok just proceed */
 	if (!append_to_queue(cmd)) {
 		send_error(cl, "unknown, command not queued");
-		ucl_object_unref(cmd);
 		return;
 	}
 }
@@ -670,7 +672,7 @@ static void
 check_schedules() {
 	struct tm *now;
 	time_t now_t;
-	ucl_object_t *o, *tmp, *cmd, *when, *dateformat;
+	const ucl_object_t *o, *tmp, *cmd, *when, *dateformat;
 	ucl_object_iter_t it = NULL;
 	char datestr[BUFSIZ];
 
@@ -699,7 +701,7 @@ check_schedules() {
 			continue;
 
 		if (!strcmp(datestr, ucl_object_tostring(when))) {
-			queue = ucl_array_append(queue, cmd);
+			append_to_queue(cmd);
 			syslog(LOG_INFO, "New command queued");
 		}
 	}
@@ -800,7 +802,7 @@ main(void)
 	struct pidfh *pfh;
 	pid_t otherpid;
 
-	ucl_object_t *sock_path_o, *pidfile_path_o;
+	const ucl_object_t *sock_path_o, *pidfile_path_o;
 
 	if ((conf = load_conf()) == NULL)
 		return (EXIT_FAILURE);
@@ -831,7 +833,7 @@ main(void)
 		return (EXIT_FAILURE);
 	}
 
-	pfh = pidfile_open(ucl_object_tostring(pidfile_path_o), 0600,
+	pfh = pidfile_open(ucl_object_tostring(pidfile_path_o), 0644,
 	    &otherpid);
 	if (pfh == NULL) {
 		if (errno == EEXIST) {

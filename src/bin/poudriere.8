@@ -27,7 +27,7 @@
 .\"
 .\" Note: The date here should be updated whenever a non-trivial
 .\" change is made to the manual page.
-.Dd March 1, 2014
+.Dd May 27, 2014
 .Dt POUDRIERE 8
 .Os
 .Sh NAME
@@ -54,6 +54,8 @@ See
 and
 .Sx ENVIRONMENT
 for more information.
+.It Fl N
+Disable color support.
 .El
 .Sh COMMANDS
 The first argument to
@@ -192,10 +194,21 @@ the bulk build will be done.
 .It Fl R
 Clean RESTRICTED packages after building.
 .It Fl s
-Skip sanity tests.
+Skip incremental rebuild and sanity checks.
 Sanity tests are made to check if the ports exists,
-does not have an increased version number, and if the compiled options
-match the current options from the make.conf files and /var/db/options.
+does not have an increased version number, packaged dependencies match,
+pkgname matches, if the compiled options match the current options from the
+.Pa make.conf
+files and
+.Pa /usr/local/etc/poudriere.d/options ,
+and that its own dependencies did not require rebuild as well.
+.It Fl S
+Don't recrusively rebuild packages affected by other packages requiring
+incremental rebuild.
+This is a subset of
+.Fl s .
+This may result in broken packages if the ones they depend on are updated
+and are not ABI-compatible.
 .It Fl t
 Add some testing to the specified ports.
 Add
@@ -203,8 +216,22 @@ Add
 to recursively test all port dependencies as well.
 Currently uninstalls the port, and disable parallel
 jobs for make.
+When used with
+.Fl a
+then
+.Fl rk
+are implied.
 .It Fl r
 Recursively test all dependencies as well.
+This flag is automatically set when using
+.Fl at .
+.It Fl k
+When using
+.Fl t
+do not consider failures as fatal.
+Do not skip dependent ports on findings.
+This flag is automatically set when using
+.Fl at .
 .It Fl T
 Try building BROKEN ports by defining TRYBROKEN for the build.
 .It Fl w
@@ -228,6 +255,10 @@ These subcommands are mutually exclusive.
 Creates a jail.
 .It Fl d
 Deletes a jail.
+.It Fl i
+Show information about a jail.
+See also
+.Cm status .
 .It Fl l
 List all available jails.
 .It Fl n
@@ -369,8 +400,12 @@ Show more verbose output.
 .It Fl B Ar branch
 Specifies which
 .Ar branch
-to checkout when using the svn method.
-(Default: head)
+to checkout when using the
+.Sy svn
+or
+.Sy git
+methods.
+(Default: head/master)
 .It Fl k
 When used with
 .Fl d ,
@@ -426,8 +461,11 @@ Runs only inside the jail named
 This argument specifies how many
 .Ar number
 jobs will run in parallel for building the dependencies.
-.It Fl n
-Do not use custom prefix.
+.It Fl k
+Do not consider failures as fatal.
+Find all failures.
+.It Fl P
+Use custom prefix.
 .It Fl N
 Do not build package repository or INDEX when build of dependencies is completed.
 .It Fl p Ar tree
@@ -435,13 +473,28 @@ Specifies which ports
 .Ar tree
 to use.
 .It Fl s
-Skip sanity tests.
+Skip incremental rebuild and sanity checks.
 Sanity tests are made to check if the ports exists,
-does not have an increased version number, and if the compiled options
-match the current options from the make.conf files and /var/db/options.
+does not have an increased version number, packaged dependencies match,
+pkgname matches, if the compiled options match the current options from the
+.Pa make.conf
+files and
+.Pa /usr/local/etc/poudriere.d/options ,
+and that its own dependencies did not require rebuild as well.
+.It Fl S
+Don't recrusively rebuild packages affected by other packages requiring
+incremental rebuild.
+This is a subset of
+.Fl s .
+This may result in broken packages if the ones they depend on are updated
+and are not ABI-compatible.
 .It Fl v
 This will show more information during the build.
 Specify twice to enable debug output.
+.It Fl w
+Save WRKDIR on build failure.
+The WRKDIR will be tarred up into
+.Sy ${POUDRIERE_DATA}/wrkdirs .
 .It Fl z Ar set
 This specifies which SET to use for the build.
 See
@@ -461,6 +514,7 @@ Dry run, do not actually delete anything.
 Specifies which ports
 .Ar tree
 to use.
+This can be specified multiple times to consider multiple tress.
 .It Fl y
 Assume yes, do not confirm and just delete the files.
 .It Fl v
@@ -567,23 +621,57 @@ There are no options associated with the
 .Cm queue
 command.
 .Ss status
+.Nm status
+sorts by SETNAME, PORTSTREE, JAILNAME and then BUILDNAME.
+.Pp
 This command accepts the following options:
 .Bl -tag -width "-f conffile"
-.It Fl j Ar name
-Specifies the
-.Ar name
-of the jail to view the status of.
-.It Fl p Ar tree
-This flag specifies which ports
-.Ar tree
-the build is running on when using
-.Fl j
+.It Fl a
+Show all builds, not just latest.
+This implies
+.Fl f .
+.It Fl b
+Show details about what each builder for the matched builds are doing.
+.It Fl B Ar name
+Specifies which buildname to match on.
+This supports shell globbing.
+Defaults to "latest".
+Specifying this implies the
+.Fl f
+flag.
+.It Fl c
+Show a more compact output and do not include some columns.
+.It Fl f
+Show finished builds, not just currently running.
+This is implied by the
+.Fl a ,
+.Fl B
+and
+.Fl r
+flags.
 .It Fl H
 Do not print headers and separate fields by a single tab instead of arbitrary
 white space.
+.It Fl j Ar name
+Specifies the
+.Ar name
+of the jail to filter by.
+.It Fl l
+Show logs instead of URL.
+.It Fl p Ar tree
+This flag specifies which ports
+.Ar tree
+to filter builds by.
+.It Fl r
+Show build results.
+This implies the
+.Fl f
+flag.
 .It Fl z Ar set
-This specifies which SET the build is running on when using
-.Fl j
+This specifies which SET to filter builds by.
+Use
+.Sy 0
+to match on empty SET.
 .El
 .Pp
 .Sh ENVIRONMENT
@@ -596,15 +684,15 @@ If specified, the path to poudriere's config directory.
 Defaults to /usr/local/etc.
 .El
 .Sh FILES
-.Bl -tag -width ".Pa POUDRIERE_ETC/poudriere.conf" -compact
+.Bl -tag -width ".Pa POUDRIERE_ETC/poudriere.d/poudriere.conf" -compact
 .It Pa POUDRIERE_ETC/poudriere.conf
 See self-documented
 .Ar /usr/local/etc/poudriere.conf.sample
 for example.
+.It Pa POUDRIERE_ETC/poudriere.d/poudriere.conf
+The configuration can be stored in the poudriere.d directory as well.
 .It Pa POUDRIERE_ETC/poudriere.d
-This directory contains
-.Ar make.conf
-files for your different jails.
+This directory contains various configuration files for the different jails.
 .El
 .Sh EXIT STATUS
 .Ex -std
@@ -752,6 +840,18 @@ Any of the following are allowed and will all be used in the order shown:
 .Dl /usr/local/etc/poudriere.d/<jailname>-<tree>-blacklist
 .Dl /usr/local/etc/poudriere.d/<jailname>-<setname>-blacklist
 .Dl /usr/local/etc/poudriere.d/<jailname>-<tree>-<setname>-blacklist
+.Ss Create optional poudriere.conf
+You can also specify an optional poudriere.conf that is pulled in
+depending on the build.
+Any of the following are allowed and will all be used in the order shown:
+.Pp
+.Dl /usr/local/etc/poudriere.d/poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<setname>-poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<tree>-poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<jailname>-poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<jailname>-<tree>-poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<jailname>-<setname>-poudriere.conf
+.Dl /usr/local/etc/poudriere.d/<jailname>-<tree>-<setname>-poudriere.conf
 .Ss Create optional make.conf
 You can also specify a global make.conf which will be used for all the
 jails.

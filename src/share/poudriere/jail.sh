@@ -1,7 +1,7 @@
 #!/bin/sh
 # 
 # Copyright (c) 2010-2013 Baptiste Daroussin <bapt@FreeBSD.org>
-# Copyright (c) 2012-2013 Bryan Drewery <bdrewery@FreeBSD.org>
+# Copyright (c) 2012-2014 Bryan Drewery <bdrewery@FreeBSD.org>
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -26,12 +26,14 @@
 # SUCH DAMAGE.
 
 usage() {
+	[ $# -gt 0 ] && echo "Missing: $@" >&2
 	cat << EOF
 poudriere jail [parameters] [options]
 
 Parameters:
     -c            -- Create a jail
     -d            -- Delete a jail
+    -i            -- Show information about a jail
     -l            -- List all available jails
     -s            -- Start a jail
     -k            -- Stop a jail
@@ -44,21 +46,18 @@ Options:
     -J n          -- Run buildworld in parallel with n jobs.
     -j jailname   -- Specify the jailname
     -v version    -- Specify which version of FreeBSD to install in the jail.
-    -a arch       -- Indicates the architecture of the jail: i386 or amd64
+    -a arch       -- Indicates the TARGET_ARCH of the jail. Such as i386 or
+                     amd64. Format of TARGET.TARGET_ARCH is also supported.
                      (Default: same as the host)
     -f fs         -- FS name (tank/jails/myjail) if fs is "none" then do not
                      create on ZFS.
     -M mountpoint -- Mountpoint
-    -m method     -- When used with -c, overrides the default method (ftp).
-                     Could also be "http", "svn", "svn+http",
-                     "svn+https", "svn+file", "svn+ssh", "csup".
-                     Please note that with the svn and csup methods the world
-                     will be built. Note that building from sources can use
-                     src.conf and jailname-src.conf in
-                     /usr/local/etc/poudriere.d/.  Other possible method are:
-                     "allbsd" (Retrieve a snapshot from allbsd.org's website)
-                     or "ftp-archive" (Retrieve an old release that is no
-                     longer available on "ftp").
+    -m method     -- When used with -c, overrides the default method for
+                     obtaining and building the jail. See poudriere(8) for more
+                     details. Can be one of:
+                       allbsd, csup, ftp, http, ftp-archve, null, src, svn,
+                       svn+file, svn+http, svn+https, svn+file, svn+ssh
+                       tar=PATH, url=SOMEURL
     -P patch      -- Specify a patch to apply to the source before building.
     -t version    -- Version of FreeBSD to upgrade the jail to.
 
@@ -71,39 +70,55 @@ EOF
 
 list_jail() {
 	local format
-	local j name version arch method mnt
+	local j name version arch method mnt timestamp time
 
-	format='%-20s %-20s %-7s %-7s %s\n'
-	if [ ${QUIET} -eq 0 ]; then
-		if [ ${NAMEONLY} -eq 0 ]; then
-			printf "${format}" "JAILNAME" "VERSION" "ARCH" "METHOD" "PATH"
-		else
-			echo JAILNAME
-		fi
+	format='%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s'
+	display_setup "${format}" 6 "-d -k2,2 -k3,3 -k1,1"
+	if [ ${NAMEONLY} -eq 0 ]; then
+		display_add "JAILNAME" "VERSION" "ARCH" "METHOD" \
+		    "TIMESTAMP" "PATH"
+	else
+		display_add JAILNAME
 	fi
 	[ -d ${POUDRIERED}/jails ] || return 0
 	for j in $(find ${POUDRIERED}/jails -type d -maxdepth 1 -mindepth 1 -print); do
 		name=${j##*/}
 		if [ ${NAMEONLY} -eq 0 ]; then
-			version=$(jget ${name} version)
-			arch=$(jget ${name} arch)
-			method=$(jget ${name} method)
-			mnt=$(jget ${name} mnt)
-			printf "${format}" "${name}" "${version}" "${arch}" "${method}" "${mnt}"
+			_jget version ${name} version
+			_jget arch ${name} arch
+			_jget method ${name} method
+			_jget mnt ${name} mnt
+			_jget timestamp ${name} timestamp 2>/dev/null || :
+			time=
+			[ -n "${timestamp}" ] && \
+			    time="$(date -j -r ${timestamp} "+%Y-%m-%d %H:%M:%S")"
+			display_add "${name}" "${version}" "${arch}" \
+			    "${method}" "${time}" "${mnt}"
 		else
-			echo ${name}
+			display_add ${name}
 		fi
 	done
+	[ ${QUIET} -eq 1 ] && quiet="-q"
+	display_output ${quiet}
 }
 
 delete_jail() {
-	test -z ${JAILNAME} && usage
+	local cache_dir method
+
+	test -z ${JAILNAME} && usage JAILNAME
 	jail_exists ${JAILNAME} || err 1 "No such jail: ${JAILNAME}"
 	jail_runs ${JAILNAME} &&
 		err 1 "Unable to delete jail ${JAILNAME}: it is running"
 	msg_n "Removing ${JAILNAME} jail..."
-	TMPFS_ALL=0 destroyfs ${JAILMNT} jail
-	rm -rf ${POUDRIERED}/jails/${JAILNAME} || :
+	method=$(jget ${JAILNAME} method)
+	if [ "${method}" = "null" ]; then
+		mv -f ${JAILMNT}/etc/login.conf.orig \
+		    ${JAILMNT}/etc/login.conf
+	else
+		TMPFS_ALL=0 destroyfs ${JAILMNT} jail
+	fi
+	cache_dir="${POUDRIERE_DATA}/cache/${JAILNAME}-*"
+	rm -rf ${POUDRIERED}/jails/${JAILNAME} ${cache_dir} || :
 	echo " done"
 }
 
@@ -116,7 +131,7 @@ cleanup_new_jail() {
 update_version() {
 	local version_extra="$1"
 
-	eval `grep "^[RB][A-Z]*=" ${JAILMNT}/usr/src/sys/conf/newvers.sh `
+	eval `grep "^[RB][A-Z]*=" ${SRC_BASE}/sys/conf/newvers.sh `
 	RELEASE=${REVISION}-${BRANCH}
 	[ -n "${version_extra}" ] &&
 	    RELEASE="${RELEASE} ${version_extra}"
@@ -132,7 +147,8 @@ update_version_env() {
 	osversion=`awk '/\#define __FreeBSD_version/ { print $3 }' ${JAILMNT}/usr/include/sys/param.h`
 	login_env=",UNAME_r=${release% *},UNAME_v=FreeBSD ${release},OSVERSION=${osversion}"
 
-	[ "${ARCH}" = "i386" -a "${REALARCH}" = "amd64" ] &&
+	# Check TARGET=i386 not TARGET_ARCH due to pc98/i386
+	[ "${ARCH%.*}" = "i386" -a "${REALARCH}" = "amd64" ] &&
 		login_env="${login_env},UNAME_p=i386,UNAME_m=i386"
 
 	sed -i "" -e "s/,UNAME_r.*:/:/ ; s/:\(setenv.*\):/:\1${login_env}:/" ${JAILMNT}/etc/login.conf
@@ -140,10 +156,16 @@ update_version_env() {
 }
 
 rename_jail() {
+	local cache_dir
+
 	jail_exists ${JAILNAME} || err 1 "No such jail: ${JAILNAME}"
 	msg_n "Renaming '${JAILNAME}' in '${NEWJAILNAME}'"
-	mv ${POUDRIERED}/jails/${JAILNAME} ${POUDRIERED}/jail/${NEWJAILNAME}
+	mv ${POUDRIERED}/jails/${JAILNAME} ${POUDRIERED}/jails/${NEWJAILNAME}
+	cache_dir="${POUDRIERE_DATA}/cache/${JAILNAME}-*"
+	rm -rf ${cache_dir} >/dev/null 2>&1 || :
 	echo " done"
+	msg_warn "The packages, logs and filesystems have not been renamed."
+	msg_warn "If you choose to rename the filesystem then modify the 'mnt' and 'fs' files in ${POUDRIERED}/jails/${NEWJAILNAME}"
 }
 
 update_jail() {
@@ -151,6 +173,7 @@ update_jail() {
 	jail_runs ${JAILNAME} &&
 		err 1 "Unable to update jail ${JAILNAME}: it is running"
 
+	SRC_BASE="${JAILMNT}/usr/src"
 	METHOD=$(jget ${JAILNAME} method)
 	if [ -z "${METHOD}" -o "${METHOD}" = "-" ]; then
 		METHOD="ftp"
@@ -160,10 +183,11 @@ update_jail() {
 	case ${METHOD} in
 	ftp|http|ftp-archive)
 		MASTERMNT=${JAILMNT}
-		MASTERNAME=${JAILNAME}
+		MASTERNAME=${JAILNAME}-${PTNAME}${SETNAME:+-${SETNAME}}
 		[ -n "${RESOLV_CONF}" ] && cp -v "${RESOLV_CONF}" "${JAILMNT}/etc/"
-		do_jail_mounts ${JAILMNT} ${ARCH}
-		jstart 1
+		do_jail_mounts "${JAILMNT}" "${JAILMNT}" ${ARCH}
+		JNETNAME="n"
+		jstart
 		if [ -z "${TORELEASE}" ]; then
 			injail env PAGER=/bin/cat /usr/sbin/freebsd-update fetch install
 		else
@@ -192,14 +216,21 @@ update_jail() {
 		msg "csup has been deprecated by FreeBSD. Only use if you are syncing with your own csup repo."
 		install_from_csup
 		update_version_env $(jget ${JAILNAME} version)
-		make -C ${JAILMNT}/usr/src delete-old delete-old-libs DESTDIR=${JAILMNT} BATCH_DELETE_OLD_FILES=yes
+		make -C ${SRC_BASE} delete-old delete-old-libs DESTDIR=${JAILMNT} BATCH_DELETE_OLD_FILES=yes
 		markfs clean ${JAILMNT}
 		;;
 	svn*)
 		install_from_svn version_extra
 		RELEASE=$(update_version "${version_extra}")
 		update_version_env "${RELEASE}"
-		make -C ${JAILMNT}/usr/src delete-old delete-old-libs DESTDIR=${JAILMNT} BATCH_DELETE_OLD_FILES=yes
+		make -C ${SRC_BASE} delete-old delete-old-libs DESTDIR=${JAILMNT} BATCH_DELETE_OLD_FILES=yes
+		markfs clean ${JAILMNT}
+		;;
+	src=*)
+		SRC_BASE="${METHOD#src=}"
+		install_from_src
+		update_version_env $(jget ${JAILNAME} version)
+		make -C ${SRC_BASE} delete-old delete-old-libs DESTDIR=${JAILMNT} BATCH_DELETE_OLD_FILES=yes
 		markfs clean ${JAILMNT}
 		;;
 	allbsd|gjb|url=*)
@@ -208,23 +239,64 @@ update_jail() {
 		delete_jail
 		create_jail
 		;;
+	null|tar)
+		err 1 "Upgrade is not supported with ${METHOD}; to upgrade, please delete and recreate the jail"
+		;;
 	*)
 		err 1 "Unsupported method"
 		;;
 	esac
+	jset ${JAILNAME} timestamp $(date +%s)
+}
 
+installworld() {
+	local destdir="${JAILMNT}"
+
+	msg "Starting make installworld"
+	${MAKE_CMD} -C "${SRC_BASE}" installworld DESTDIR=${destdir} \
+	    DB_FROM_SRC=1 || err 1 "Failed to 'make installworld'"
+	${MAKE_CMD} -C "${SRC_BASE}" DESTDIR=${destdir} DB_FROM_SRC=1 \
+	    distrib-dirs || err 1 "Failed to 'make distrib-dirs'"
+	${MAKE_CMD} -C "${SRC_BASE}" DESTDIR=${destdir} distribution ||
+	    err 1 "Failed to 'make distribution'"
+
+	return 0
+}
+
+setup_compat_env() {
+	local osversion hostver
+
+	osversion=$(awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $3}' ${SRC_BASE}/sys/sys/param.h)
+	hostver=$(awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $3}' /usr/include/sys/param.h)
+	MAKE_CMD=make
+	if [ ${hostver} -gt 1000000 -a ${osversion} -lt 1000000 ]; then
+		FMAKE=$(which fmake 2>/dev/null)
+		[ -n "${FMAKE}" ] ||
+			err 1 "You need fmake installed on the host: devel/fmake"
+		MAKE_CMD=${FMAKE}
+	fi
+
+	# Don't enable CCACHE for 10, there are still obscure clang and ld
+	# issues
+	if [ ${osversion} -lt 1000000 ]; then
+		: ${CCACHE_PATH:="/usr/local/libexec/ccache"}
+		if [ -n "${CCACHE_DIR}" -a -d ${CCACHE_PATH}/world ]; then
+			export CCACHE_DIR
+			export CC="${CCACHE_PATH}/world/cc"
+			export CXX="${CCACHE_PATH}/world/c++"
+			unset CCACHE_TEMPDIR
+		fi
+	fi
 }
 
 build_and_install_world() {
-	case "${ARCH}" in
-	mips64)
-		export TARGET=mips
-		;;
-	armv6)
-		export TARGET=arm
-		;;
-	esac
-	export TARGET_ARCH=${ARCH}
+	if [ -n "${EMULATOR}" ]; then
+		mkdir -p ${JAILMNT}${EMULATOR%/*}
+		cp "${EMULATOR}" "${JAILMNT}${EMULATOR}"
+	fi
+
+	[ "${ARCH%.*}" = "${ARCH#*.}" ] || export TARGET=${ARCH%.*}
+	export TARGET_ARCH=${ARCH#*.}
 	export SRC_BASE=${JAILMNT}/usr/src
 	mkdir -p ${JAILMNT}/etc
 	[ -f ${JAILMNT}/etc/src.conf ] && rm -f ${JAILMNT}/etc/src.conf
@@ -236,47 +308,18 @@ build_and_install_world() {
 	export SRCCONF=${JAILMNT}/etc/src.conf
 	MAKE_JOBS="-j${PARALLEL_JOBS}"
 
-	fbsdver=$(awk '/^\#define[[:blank:]]__FreeBSD_version/ {print $3}' ${JAILMNT}/usr/src/sys/sys/param.h)
-	hostver=$(sysctl -n kern.osreldate)
-	make_cmd=make
-	if [ ${hostver} -gt 1000000 -a ${fbsdver} -lt 1000000 ]; then
-		FMAKE=$(which fmake 2>/dev/null)
-		[ -n "${FMAKE}" ] ||
-			err 1 "You need fmake installed on the host: devel/fmake"
-		make_cmd=${FMAKE}
-	fi
-
-	# Don't enable CCACHE for 10, there are still obscure clang and ld
-	# issues
-	if [ ${fbsdver} -lt 1000000 ]; then
-		: ${CCACHE_PATH:="/usr/local/libexec/ccache"}
-		if [ -n "${CCACHE_DIR}" -a -d ${CCACHE_PATH}/world ]; then
-			export CCACHE_DIR
-			export CC="${CCACHE_PATH}/world/cc"
-			export CXX="${CCACHE_PATH}/world/c++"
-			unset CCACHE_TEMPDIR
-		fi
-	fi
+	setup_compat_env
 
 	msg "Starting make buildworld with ${PARALLEL_JOBS} jobs"
-	${make_cmd} -C ${JAILMNT}/usr/src buildworld ${MAKE_JOBS} \
+	${MAKE_CMD} -C ${SRC_BASE} buildworld ${MAKE_JOBS} \
 	    ${MAKEWORLDARGS} || err 1 "Failed to 'make buildworld'"
-	msg "Starting make installworld"
-	${make_cmd} -C ${JAILMNT}/usr/src installworld DESTDIR=${JAILMNT} \
-	    DB_FROM_SRC=1 || err 1 "Failed to 'make installworld'"
-	${make_cmd} -C ${JAILMNT}/usr/src DESTDIR=${JAILMNT} DB_FROM_SRC=1 \
-	    distrib-dirs || err 1 "Failed to 'make distrib-dirs'"
-	${make_cmd} -C ${JAILMNT}/usr/src DESTDIR=${JAILMNT} distribution ||
-	    err 1 "Failed to 'make distribution'"
 
-	case "${ARCH}" in
-	mips64)
-		cp `which qemu-mips64` ${JAILMNT}/usr/bin/qemu-mips64
-		;;
-	armv6)
-		cp `which qemu-arm` ${JAILMNT}/usr/bin/qemu-arm
-		;;
-	esac
+	installworld
+}
+
+install_from_src() {
+	setup_compat_env
+	installworld
 }
 
 install_from_svn() {
@@ -285,8 +328,11 @@ install_from_svn() {
 	local proto
 	local svn_rev
 
-	[ -d ${JAILMNT}/usr/src ] && UPDATE=1
-	mkdir -p ${JAILMNT}/usr/src
+	if [ -d "${SRC_BASE}" ]; then
+		UPDATE=1
+	else
+		mkdir -p ${SRC_BASE}
+	fi
 	case ${METHOD} in
 	svn+http) proto="http" ;;
 	svn+https) proto="https" ;;
@@ -296,22 +342,22 @@ install_from_svn() {
 	esac
 	if [ ${UPDATE} -eq 0 ]; then
 		msg_n "Checking out the sources from svn..."
-		${SVN_CMD} -q co ${proto}://${SVN_HOST}/base/${VERSION} ${JAILMNT}/usr/src || err 1 " fail"
+		${SVN_CMD} -q co ${proto}://${SVN_HOST}/base/${VERSION} ${SRC_BASE} || err 1 " fail"
 		echo " done"
 		if [ -n "${SRCPATCHFILE}" ]; then
 			msg_n "Patching the sources with ${SRCPATCHFILE}"
-			${SVN_CMD} -q patch ${SRCPATCHFILE} ${JAILMNT}/usr/src || err 1 " fail"
+			${SVN_CMD} -q patch ${SRCPATCHFILE} ${SRC_BASE} || err 1 " fail"
 			echo done
 		fi
 	else
 		msg_n "Updating the sources from svn..."
-		${SVN_CMD} upgrade ${JAILMNT}/usr/src 2>/dev/null || :
-		${SVN_CMD} -q update -r ${TORELEASE:-head} ${JAILMNT}/usr/src || err 1 " fail"
+		${SVN_CMD} upgrade ${SRC_BASE} 2>/dev/null || :
+		${SVN_CMD} -q update -r ${TORELEASE:-head} ${SRC_BASE} || err 1 " fail"
 		echo " done"
 	fi
 	build_and_install_world
 
-	svn_rev=$(${SVN_CMD} info ${JAILMNT}/usr/src |
+	svn_rev=$(${SVN_CMD} info ${SRC_BASE} |
 	    awk '/Last Changed Rev:/ {print $4}')
 	setvar "${var_version_extra}" "r${svn_rev}"
 }
@@ -319,7 +365,7 @@ install_from_svn() {
 install_from_csup() {
 	local var_version_extra="$1"
 	local UPDATE=0
-	[ -d ${JAILMNT}/usr/src ] && UPDATE=1
+	[ -d "${SRC_BASE}" ] && UPDATE=1
 	mkdir -p ${JAILMNT}/etc
 	mkdir -p ${JAILMNT}/var/db
 	mkdir -p ${JAILMNT}/usr
@@ -434,13 +480,26 @@ install_from_ftp() {
 	echo " done"
 }
 
+install_from_tar() {
+	msg_n "Installing ${VERSION} ${ARCH} from ${TARBALL} ..."
+	tar -xpf ${TARBALL} -C ${JAILMNT}/ || err 1 " fail"
+	echo " done"
+}
+
 create_jail() {
 	jail_exists ${JAILNAME} && err 2 "The jail ${JAILNAME} already exists"
 
-	test -z ${VERSION} && usage
+	test -z ${VERSION} && usage VERSION
 
 	[ "${JAILNAME#*.*}" = "${JAILNAME}" ] ||
 		err 1 "The jailname can not contain a period (.). See jail(8)"
+
+	if [ "${METHOD}" = "null" ]; then
+		[ -z "${JAILMNT}" ] && \
+		    err 1 "Must set -M to path of jail to use"
+		[ "${JAILMNT}" = "/" ] && \
+		    err 1 "Cannot use /"
+	fi
 
 	if [ -z ${JAILMNT} ]; then
 		[ -z ${BASEFS} ] && err 1 "Please provide a BASEFS variable in your poudriere.conf"
@@ -451,6 +510,8 @@ create_jail() {
 		[ -z ${ZPOOL} ] && err 1 "Please provide a ZPOOL variable in your poudriere.conf"
 		JAILFS=${ZPOOL}${ZROOTFS}/jails/${JAILNAME}
 	fi
+
+	SRC_BASE="${JAILMNT}/usr/src"
 
 	case ${METHOD} in
 	ftp|http|gjb|ftp-archive|url=*)
@@ -510,6 +571,22 @@ create_jail() {
 		msg "csup has been depreciated by FreeBSD. Only use if you are syncing with your own csup repo."
 		FCT=install_from_csup
 		;;
+	src=*)
+		SRC_BASE="${METHOD#src=}"
+		FCT=install_from_src
+		;;
+	tar=*)
+		FCT=install_from_tar
+		TARBALL="${METHOD##*=}"
+		[ -z "${TARBALL}" ] && \
+		    err 1 "Must use format -m tar=/path/to/tarball.tar"
+		[ -r "${TARBALL}" ] || err 1 "Cannot read file ${TARBALL}"
+		METHOD="${METHOD%%=*}"
+		;;
+	null)
+		JAILFS=none
+		FCT=
+		;;
 	*)
 		err 2 "Unknown method to create the jail"
 		;;
@@ -518,6 +595,7 @@ create_jail() {
 	createfs ${JAILNAME} ${JAILMNT} ${JAILFS:-none}
 	[ -n "${JAILFS}" -a "${JAILFS}" != "none" ] && jset ${JAILNAME} fs ${JAILFS}
 	jset ${JAILNAME} version ${VERSION}
+	jset ${JAILNAME} timestamp $(date +%s)
 	jset ${JAILNAME} arch ${ARCH}
 	jset ${JAILNAME} mnt ${JAILMNT}
 
@@ -525,40 +603,104 @@ create_jail() {
 	# if any error is encountered
 	CLEANUP_HOOK=cleanup_new_jail
 	jset ${JAILNAME} method ${METHOD}
-	${FCT} version_extra
+	[ -n "${FCT}" ] && ${FCT} version_extra
 
-	RELEASE=$(update_version "${version_extra}")
-	update_version_env "${RELEASE}"
-
-	if [ "${ARCH}" = "i386" -a "${REALARCH}" = "amd64" ]; then
-		cat > ${JAILMNT}/etc/make.conf << EOF
-ARCH=i386
-MACHINE=i386
-MACHINE_ARCH=i386
-EOF
-
+	if [ -r "${SRC_BASE}/sys/conf/newvers.sh" ]; then
+		RELEASE=$(update_version "${version_extra}")
+	else
+		RELEASE="${VERSION}"
 	fi
 
+	cp -f "${JAILMNT}/etc/login.conf" "${JAILMNT}/etc/login.conf.orig"
+	update_version_env "${RELEASE}"
+
 	pwd_mkdb -d ${JAILMNT}/etc/ -p ${JAILMNT}/etc/master.passwd
-
-	cat >> ${JAILMNT}/etc/make.conf << EOF
-USE_PACKAGE_DEPENDS=yes
-BATCH=yes
-WRKDIRPREFIX=/wrkdirs
-EOF
-
-	mkdir -p ${JAILMNT}/usr/ports
-	mkdir -p ${JAILMNT}/wrkdirs
-	mkdir -p ${POUDRIERE_DATA}/logs
-
 	jail -U root -c path=${JAILMNT} command=/sbin/ldconfig -m /lib /usr/lib /usr/lib/compat
 
 	markfs clean ${JAILMNT}
+
+	# Always update when using FreeBSD dists
+	case ${METHOD} in
+		ftp|http|ftp-archive)
+			update_jail
+			;;
+	esac
+
 	unset CLEANUP_HOOK
+
 	msg "Jail ${JAILNAME} ${VERSION} ${ARCH} is ready to be used"
 }
 
-ARCH=`uname -m`
+info_jail() {
+	local nbb nbf nbi nbq nbs tobuild
+	local building_started status log
+	local elapsed elapsed_days elapsed_hms elapsed_timestamp
+	local now start_time timestamp
+	local jversion jarch jmethod pmethod
+
+	jail_exists ${JAILNAME} || err 1 "No such jail: ${JAILNAME}"
+	porttree_exists ${PTNAME} || err 1 "No such tree: ${PTNAME}"
+
+	POUDRIERE_BUILD_TYPE=bulk
+	BUILDNAME=latest
+
+	_log_path log
+	now=$(date +%s)
+
+	_bget status status 2>/dev/null || :
+	_bget nbq stats_queued 2>/dev/null || nbq=0
+	_bget nbb stats_built 2>/dev/null || nbb=0
+	_bget nbf stats_failed 2>/dev/null || nbf=0
+	_bget nbi stats_ignored 2>/dev/null || nbi=0
+	_bget nbs stats_skipped 2>/dev/null || nbs=0
+	tobuild=$((nbq - nbb - nbf - nbi - nbs))
+
+	_jget jversion ${JAILNAME} version
+	_jget jarch ${JAILNAME} arch
+	_jget jmethod ${JAILNAME} method
+	_jget timestamp ${JAILNAME} timestamp 2>/dev/null || :
+	_pget pmethod ${PTNAME} method
+
+	echo "Jail name:         ${JAILNAME}"
+	echo "Jail version:      ${jversion}"
+	echo "Jail arch:         ${jarch}"
+	echo "Jail method:      ${jmethod}"
+	if [ -n "${timestamp}" ]; then
+		echo "Jail updated:      $(date -j -r ${timestamp} "+%Y-%m-%d %H:%M:%S")"
+	fi
+	echo "Tree name:         ${PTNAME}"
+	echo "Tree method:       ${pmethod:--}"
+#	echo "Tree updated:      $(pget ${PTNAME} timestamp)"
+	echo "Status:            ${status}"
+	if calculate_elapsed_from_log ${now} ${log}; then
+		start_time=${_start_time}
+		elapsed=${_elapsed_time}
+		building_started=$(date -j -r ${start_time} "+%Y-%m-%d %H:%M:%S")
+		elapsed_days=$((elapsed/86400))
+		calculate_duration elapsed_hms "${elapsed}"
+		case ${elapsed_days} in
+			0) elapsed_timestamp="${elapsed_hms}" ;;
+			1) elapsed_timestamp="1 day, ${elapsed_hms}" ;;
+			*) elapsed_timestamp="${elapsed_days} days, ${elapsed_hms}" ;;
+		esac
+		echo "Building started:  ${building_started}"
+		echo "Elapsed time:      ${elapsed_timestamp}"
+		echo "Packages built:    ${nbb}"
+		echo "Packages failed:   ${nbf}"
+		echo "Packages ignored:  ${nbi}"
+		echo "Packages skipped:  ${nbs}"
+		echo "Packages total:    ${nbq}"
+		echo "Packages left:     ${tobuild}"
+	fi
+
+	unset POUDRIERE_BUILD_TYPE
+}
+
+SCRIPTPATH=`realpath $0`
+SCRIPTPREFIX=`dirname ${SCRIPTPATH}`
+. ${SCRIPTPREFIX}/common.sh
+
+get_host_arch ARCH
 REALARCH=${ARCH}
 START=0
 STOP=0
@@ -572,13 +714,45 @@ INFO=0
 UPDATE=0
 PTNAME=default
 SETNAME=""
+BINMISC="/usr/sbin/binmiscctl"
 
-SCRIPTPATH=`realpath $0`
-SCRIPTPREFIX=`dirname ${SCRIPTPATH}`
-. ${SCRIPTPREFIX}/common.sh
+need_emulation() {
+	[ $# -eq 2 ] || eargs need_emulation real_arch wanted_arch
+	local real_arch="$1"
+	local wanted_arch="$2"
 
-while getopts "J:j:v:a:z:m:nf:M:sdklqcip:r:ut:z:P:" FLAG; do
+	# Returning 1 means no emulation required.
+
+	# Check for host=amd64 and TARGET=i386 (not TARGET_ARCH due to
+	# pc98/i386)
+	if [ "${real_arch}" = "amd64" \
+	    -a "${wanted_arch%.*}" = "i386" ]; then
+		return 1
+	# TARGET_ARCH matches
+	elif [ "${real_arch#*.}" = "${wanted_arch#*.}" ]; then
+		return 1
+	fi
+
+	# Emulation is required
+	return 0
+}
+
+check_emulation() {
+	if need_emulation "${REALARCH}" "${ARCH}"; then
+		msg "Cross-building ports for ${ARCH} on ${REALARCH} requires QEMU"
+		[ -x "${BINMISC}" ] || \
+		    err 1 "Cannot find ${BINMISC}. Install ${BINMISC} and restart"
+		EMULATOR=$(${BINMISC} lookup ${ARCH} 2>/dev/null | awk '/interpreter:/ {print $2}')
+		[ -x "${EMULATOR}" ] || \
+		    err 1 "You need to setup an emulator with binmiscctl(8) for ${ARCH}"
+	fi
+}
+
+while getopts "iJ:j:v:a:z:m:nf:M:sdklqcip:r:ut:z:P:" FLAG; do
 	case "${FLAG}" in
+		i)
+			INFO=1
+			;;
 		j)
 			JAILNAME=${OPTARG}
 			;;
@@ -589,17 +763,10 @@ while getopts "J:j:v:a:z:m:nf:M:sdklqcip:r:ut:z:P:" FLAG; do
 			VERSION=${OPTARG}
 			;;
 		a)
-			[ "${REALARCH}" != "amd64" -a "${REALARCH}" != ${OPTARG} ] &&
-				err 1 "Only amd64 host can choose another architecture"
 			ARCH=${OPTARG}
-			case "${ARCH}" in
-			mips64)
-				[ -x `which qemu-mips64` ] || err 1 "You need qemu-mips64 installed on the host"
-				;;
-			armv6)
-				[ -x `which qemu-arm` ] || err 1 "You need qemu-arm installed on the host"
-				;;
-			esac
+			# If TARGET=TARGET_ARCH trim it away and just use
+			# TARGET_ARCH
+			[ "${ARCH%.*}" = "${ARCH#*.}" ] && ARCH="${ARCH#*.}"
 			;;
 		m)
 			METHOD=${OPTARG}
@@ -658,51 +825,69 @@ while getopts "J:j:v:a:z:m:nf:M:sdklqcip:r:ut:z:P:" FLAG; do
 	esac
 done
 
+saved_argv="$@"
+shift $((OPTIND-1))
+
 METHOD=${METHOD:-ftp}
 if [ -n "${JAILNAME}" -a ${CREATE} -eq 0 ]; then
-	ARCH=$(jget ${JAILNAME} arch)
-	JAILFS=$(jget ${JAILNAME} fs)
-	JAILMNT=$(jget ${JAILNAME} mnt)
+	_jget ARCH ${JAILNAME} arch 2>/dev/null || :
+	_jget JAILFS ${JAILNAME} fs 2>/dev/null || :
+	_jget JAILMNT ${JAILNAME} mnt 2>/dev/null || :
 fi
 
-case "${CREATE}${LIST}${STOP}${START}${DELETE}${UPDATE}${RENAME}" in
-	1000000)
-		test -z ${JAILNAME} && usage
+case "${CREATE}${INFO}${LIST}${STOP}${START}${DELETE}${UPDATE}${RENAME}" in
+	10000000)
+		test -z ${JAILNAME} && usage JAILNAME
+		check_emulation
+		maybe_run_queued "${saved_argv}"
 		create_jail
 		;;
-	0100000)
+	01000000)
+		test -z ${JAILNAME} && usage JAILNAME
+		export MASTERNAME=${JAILNAME}-${PTNAME}${SETNAME:+-${SETNAME}}
+		_mastermnt MASTERMNT
+		export MASTERMNT
+		info_jail
+		;;
+	00100000)
 		list_jail
 		;;
-	0010000)
-		test -z ${JAILNAME} && usage
+	00010000)
+		test -z ${JAILNAME} && usage JAILNAME
 		porttree_exists ${PTNAME} || err 2 "No such ports tree ${PTNAME}"
+		maybe_run_queued "${saved_argv}"
 		export MASTERNAME=${JAILNAME}-${PTNAME}${SETNAME:+-${SETNAME}}
-		export MASTERMNT=${POUDRIERE_DATA}/build/${MASTERNAME}/ref
+		_mastermnt MASTERMNT
+		export MASTERMNT
 		jail_runs ${MASTERNAME} ||
 		    msg "Jail ${MASTERNAME} not running, but cleaning up anyway"
 		jail_stop
 		;;
-	0001000)
+	00001000)
 		export SET_STATUS_ON_START=0
-		test -z ${JAILNAME} && usage
+		test -z ${JAILNAME} && usage JAILNAME
 		porttree_exists ${PTNAME} || err 2 "No such ports tree ${PTNAME}"
+		maybe_run_queued "${saved_argv}"
 		export MASTERNAME=${JAILNAME}-${PTNAME}${SETNAME:+-${SETNAME}}
-		export MASTERMNT=${POUDRIERE_DATA}/build/${MASTERNAME}/ref
+		_mastermnt MASTERMNT
+		export MASTERMNT
 		jail_start ${JAILNAME} ${PTNAME} ${SETNAME}
-		jstop
-		# Restart with network
-		jstart 1
+		JNETNAME="n"
 		;;
-	0000100)
-		test -z ${JAILNAME} && usage
+	00000100)
+		test -z ${JAILNAME} && usage JAILNAME
+		maybe_run_queued "${saved_argv}"
 		delete_jail
 		;;
-	0000010)
-		test -z ${JAILNAME} && usage
+	00000010)
+		test -z ${JAILNAME} && usage JAILNAME
+		maybe_run_queued "${saved_argv}"
+		check_emulation
 		update_jail
 		;;
-	0000011)
-		test -z ${JAILNAME} && usage
+	00000001)
+		test -z ${JAILNAME} && usage JAILNAME
+		maybe_run_queued "${saved_argv}"
 		rename_jail
 		;;
 	*)

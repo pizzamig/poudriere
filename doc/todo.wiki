@@ -4,17 +4,12 @@
 
 These should be fixed in <strong>trunk</strong> and then merged back to <strong>3.0.x</strong> after enough testing.
 
-  *  stage-orphan issue: [http://gbpaste.org/omGBx] (@owner root @group root @mode 4555 FILE @owner @group @mode)  (May be fixed by [f08c1158f0])
-  *  stage-orphan issue between devel/gettext multimedia/phonon having to do with injail mtree change in [9de071c9ec], see Ticket [940f8cf068]
   *  Possibly a ZFS ports tree issue where the tree is checked out before filesystem created - might have been operator error.
   *  Document hooks
   *  Validate 'jail -c -v amd64' is a number!
   *  jail has major issues with error handling/cleanup:
   *  jail -c does not cleanup jail on failure
   *  failure in jail -u freebsd-update can leave '91amd64' running with no way to stop it
-  *  Write out json early, before compute_deps, so the webpage is not blank/loading for several minutes
-  *  stop html json querying when build done (may be done already)
-  *  show TOBUILD count in SIGINFO
   *  pkg bootstrap skipping sanity is no good, skips all version checks. Need to have a bootstrap mode so it reruns.
   *  This is wrong, should skip shell-meta as npm was skipped, not because node failed:
 <verbatim>
@@ -22,17 +17,15 @@ These should be fixed in <strong>trunk</strong> and then merged back to <strong>
      ====>> [01] Skipping build of www/npm: Dependent port www/node failed
      ====>> [01] Skipping build of local/shell-meta: Dependent port www/node failed
 </verbatim>
-  *  testport -n should probably become default, or we make a serious effort to cleanup known bad framework or mark them special in poudriere (python,ruby,etc)
-  *  testport -I gives wrong msg (needs -jpz): ====>> To stop jail: poudriere jail -k -j exp-91amd64-commit-test
-  *  Incorrect dependency/option rebuilding: [https://forums.freebsd.org/viewtopic.php?f=3&t=44963]
   *  False positive old ver delete seen: ====>> Deleting old version: dovecot-sieve-1.2 0.1.19.txz
   *  new dependency checking should account for DELETED deps too (might not be an issue)
   *  options checking needs to account for DELETED options (reported by feld)
   *  Document/test portshaker usage
+  *  pkgclean/options MOVED support
+  *  Display DEPRECATED ports at end and UNMAINTAINED ports.
 
 <h2>3.1</h2>
   *  Allow dependency calculation to optionally not exit on first failure. Complex as errors come from many places, reporting all errors at once may be even more complex. (bulk -k)
-  *  Merge marino's fixes for webui with bdrewery's bootstrap work
   *  convert+import updated processonelog
   *  options needs to be jailed.
   *  <strong>logclean</strong> to cleanup old logs (bdrewery has this started). Note that not easily possible to show "free space" calc due to this involving mostly hard-links.
@@ -40,11 +33,10 @@ These should be fixed in <strong>trunk</strong> and then merged back to <strong>
   *  Allow creating jail from existing /usr/src (or other) dir.
   *  Hooks for jail startup/end to be able to customize jail on-demand, see [https://github.com/davehayes/poudriere/commit/721d19562443d4caa61739203139f0da94e0336c]
   *  new dependency check should move to <strong>Mk/bsd.port.mk</strong>
-  *  testport with leftovers results in 'crashed'
   *  "soft exit", "exit when idle" mode, SIGUSR1
-  *  Merge stage-orphan checking with <em>make check-orphans</em>. Ensure no checks are lost.
   *  Allow git method for jail
-  *  Remove PLIST_SUB magic
+  *  Auto fix manually running pkg-repo in the atomic dir which breaks the symlink
+  *  Missing poudriere.conf/BASEFS checks fail due to not having msg_error defined yet.
 
 <h3>Stability</h3>
 
@@ -53,7 +45,6 @@ These should be fixed in <strong>trunk</strong> and then merged back to <strong>
     # An attempt to get % memory used, considering ARC_MFU as non-free.
     sysctl -n vm.stats.vm.v_inactive_count vm.stats.vm.v_cache_count vm.stats.vm.v_free_count hw.physmem kstat.zfs.misc.arcstats.size vfs.zfs.mfu_size hw.pagesize|tr '\n' ' '| { read vm1 vm2 vm3 physmem arc arc_mfu pagesize; echo "scale=2;((${physmem} - ((${vm1} + ${vm2} + ${vm3}) * ${pagesize}) - ${arc} + ${arc_mfu}) / ${physmem}) * 100"|bc;}
 </verbatim>
-  *  <em>madvise(2)</em> the main poudriere pid so that OOM will allow poudriere to continue/cleanup.
   *  [http://www.freebsd.org/cgi/man.cgi?query=rctl&sektion=8&manpath=FreeBSD+9.0-RELEASE|rctl(8)] support to limit jail memory usage. This may hurt performance, but will ensure no jail uses all RAM. ulimit -m does not work per-jail, it is only per-process.
   *  Assigning jails cpusets to ensure misbehaving ports don't hog all CPU and only use the expected *1* CPU.
   *  <em>build_pkg</em> startup failure can "crash" a jail and all future builds on it. This can be seen by putting a false a few lines into <em>build_pkg</em>
@@ -90,7 +81,6 @@ These should be fixed in <strong>trunk</strong> and then merged back to <strong>
   *  Sandboxing with [http://www.freebsd.org/cgi/man.cgi?query=capsicum&apropos=0&sektion=0&manpath=FreeBSD+10.0-RELEASE&arch=default&format=html|Capsicum]
   *  Currently poudriere executes everything from the context of the host using jexec. This hurts performance a lot as every jexec and fork/exec creates a lot of lock contention. The jail should spawn up a client and the host (master) should communicate to it with commands. This also improves sandboxing substatially as it avoids accidentlly forgetting <strong>injail</strong> in the code. This architecture lends itself to remote jails/builders as well.
   *  REST daemon
-  *  Separate jail for fetching; only that jail gets networking. No more flipping networking by restarting jails as it leads to a lot of lock contention.
   *  Use automated testing from the start.
 
 <h2>Wishlist</h2>

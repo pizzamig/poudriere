@@ -27,7 +27,7 @@
 
 JAILMNT=$1
 PKGNAME=$2
-CLEAN_RDEPENDS=${3:-0}
+CLEAN_RDEPENDS=${3}
 
 case "${JAILMNT}" in
 	/?*)
@@ -48,21 +48,21 @@ fi
 # anything depending on me and skip them.
 clean_rdeps() {
 	local pkgname=$1
-	local clean_rdepends=$2
+	local clean_rdepends="$2"
 	local dep_dir dep_pkgname
 	local deps_to_check deps_to_clean
 	local rdep_dir
 
-	rdep_dir="${JAILMNT}/poudriere/cleaning/rdeps/${pkgname}"
+	rdep_dir="${JAILMNT}/.p/cleaning/rdeps/${pkgname}"
 
 	# Exclusively claim the rdeps dir or return, another clean.sh owns it
 	# or there were no reverse deps for this package.
-	mv "${JAILMNT}/poudriere/rdeps/${pkgname}" "${rdep_dir}" 2>/dev/null ||
+	mv "${JAILMNT}/.p/rdeps/${pkgname}" "${rdep_dir}" 2>/dev/null ||
 	    return 0
 
 	# Cleanup everything that depends on my package
 	# Note 2 loops here to avoid rechecking clean_rdepends every loop.
-	if [ ${clean_rdepends} -eq 1 ]; then
+	if [ -n "${clean_rdepends}" ]; then
 		# Recursively cleanup anything that depends on my package.
 		for dep_dir in ${rdep_dir}/*; do
 			# May be empty if all my reverse deps are now skipped.
@@ -72,14 +72,14 @@ clean_rdeps() {
 			# clean_pool() in common.sh will pick this up and add to SKIPPED
 			echo "${dep_pkgname}"
 
-			clean_pool ${dep_pkgname} ${clean_rdepends}
+			clean_pool ${dep_pkgname} "${clean_rdepends}"
 		done
 	else
 		for dep_dir in ${rdep_dir}/*; do
 			dep_pkgname=${dep_dir##*/}
 
-			deps_to_check="${deps_to_check} ${JAILMNT}/poudriere/deps/${dep_pkgname}"
-			deps_to_clean="${deps_to_clean} ${JAILMNT}/poudriere/deps/${dep_pkgname}/${pkgname}"
+			deps_to_check="${deps_to_check} ${JAILMNT}/.p/deps/${dep_pkgname}"
+			deps_to_clean="${deps_to_clean} ${JAILMNT}/.p/deps/${dep_pkgname}/${pkgname}"
 		done
 
 		# Remove this package from every package depending on this.
@@ -94,7 +94,7 @@ clean_rdeps() {
 		echo ${deps_to_check} | \
 		    xargs -J % \
 		    find % -type d -maxdepth 0 -empty 2>/dev/null | \
-		    xargs -J % mv % "${JAILMNT}/poudriere/pool/unbalanced" \
+		    xargs -J % mv % "${JAILMNT}/.p/pool/unbalanced" \
 		    2>/dev/null || :
 	fi
 
@@ -106,15 +106,15 @@ clean_rdeps() {
 # Remove my /deps/<pkgname> dir and any references to this dir in /rdeps/
 clean_deps() {
 	local pkgname=$1
-	local clean_rdepends=$2
+	local clean_rdepends="$2"
 	local dep_dir rdep_pkgname
 	local deps_to_check rdeps_to_clean
 	local dir
 
-	dep_dir="${JAILMNT}/poudriere/cleaning/deps/${pkgname}"
+	dep_dir="${JAILMNT}/.p/cleaning/deps/${pkgname}"
 
 	# Exclusively claim the deps dir or return, another clean.sh owns it
-	mv "${JAILMNT}/poudriere/deps/${pkgname}" "${dep_dir}" 2>/dev/null ||
+	mv "${JAILMNT}/.p/deps/${pkgname}" "${dep_dir}" 2>/dev/null ||
 	    return 0
 
 	# Remove myself from all my dependency rdeps to prevent them from
@@ -123,7 +123,7 @@ clean_deps() {
 	for dir in ${dep_dir}/*; do
 		rdep_pkgname=${dir##*/}
 
-		rdeps_to_clean="${rdeps_to_clean} ${JAILMNT}/poudriere/rdeps/${rdep_pkgname}/${pkgname}"
+		rdeps_to_clean="${rdeps_to_clean} ${JAILMNT}/.p/rdeps/${rdep_pkgname}/${pkgname}"
 	done
 
 	echo ${rdeps_to_clean} | xargs rm -f || :
@@ -135,18 +135,18 @@ clean_deps() {
 
 clean_pool() {
 	local pkgname=$1
-	local clean_rdepends=$2
+	local clean_rdepends="$2"
 
-	clean_rdeps "${pkgname}" ${clean_rdepends}
+	clean_rdeps "${pkgname}" "${clean_rdepends}"
 
 	# Remove this pkg from the needs-to-build list. It will not exist
 	# if this build was sucessful. It only exists if clean_pool is
 	# being called recursively to skip items and in that case it will
 	# not be empty.
-	[ ${clean_rdepends} -eq 1 ] &&
-	    clean_deps "${pkgname}" ${clean_rdepends}
+	[ -n "${clean_rdepends}" ] &&
+	    clean_deps "${pkgname}" "${clean_rdepends}"
 
 	return 0
 }
 
-clean_pool "${PKGNAME}" ${CLEAN_RDEPENDS}
+clean_pool "${PKGNAME}" "${CLEAN_RDEPENDS}"

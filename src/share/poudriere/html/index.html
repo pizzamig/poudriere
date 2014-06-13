@@ -1,167 +1,101 @@
-<!-- vim: set sts=4 sw=4 ts=4 noet: -->
-<html>
-	<head>
-		<title>Poudriere bulk results</title>
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta http-equiv="Cache-Control" content="no-cache">
+		<meta http-equiv="Pragma" content="no-cache">
+		<meta http-equiv="Expires" content="0">
 
-		<script src="assets/jquery-1.9.1.min.js" type="text/javascript"></script>
-		<link href="assets/dataTables/css/jquery.dataTables.css" rel="stylesheet" type="text/css">
-		<script src="assets/dataTables/js/jquery.dataTables.min.js" type="text/javascript" charset="utf8"></script>
+		<title>Poudriere Index</title>
 
-		<script src="assets/poudriere.js" type="text/javascript"></script>
-		<link href="assets/poudriere.css" type="text/css" rel="stylesheet" />
-		<META http-equiv="Cache-Control" content="no-cache">
-		<META http-equiv="Pragma" content="no-cache">
-		<META http-equiv="Expires" content="0"> 
+		<link href="index_files/jquery.css" rel="stylesheet" type="text/css">
+		<link href="index_files/bootstrap.css" type="text/css" rel="stylesheet">
+		<link href="index_files/poudriere.css" type="text/css" rel="stylesheet">
+
+		<link rel="shortcut icon" href="https://fossil.etoilebsd.net/poudriere/raw/src/share/poudriere/html/assets/favicon.ico">
 	</head>
 	<body>
-		<div id="loading_overlay" style="display: none;">
+		<div id="top"></div>
+		<div id="header" class="navbar navbar-default navbar-fixed-top" role="navigation">
+			<div class="container-fluid">
+				<div class="row">
+					<div class="col-md-6">
+						<div id="logo">
+							<img src="index_files/logo.svg" alt="logo" class="pull-left">
+						</div>
+						<div>
+							<ul class="nav navbar-nav nav-pills pull-left">
+								<li><a title="top" href="#top"><span class="glyphicon glyphicon-chevron-up"></span></a></li>
+								<li><a href="#latest_builds">Latest Builds</a></li>
+								<li class="dropdown">
+									<a href="#" class="dropdown-toggle" data-toggle="dropdown">Logs <b class="caret"></b></a>
+									<ul class="dropdown-menu">
+										<li><a href="https://fossil.etoilebsd.net/poudriere/raw/src/share/poudriere/html/latest-per-pkg/" class="data_url" target="logs"><span class="glyphicon glyphicon-share-alt"></span>Latest Per Package</a></li>
+									</ul>
+								</li>
+							</ul>
+						</div><!-- /.navbar-collapse -->
+					</div><!-- /col -->
+				</div><!-- /row -->
+			</div><!-- /container -->
+		</div> <!-- navbar-static-top -->
+	<!-- #header, navbar -->
+	<div id="main" class="container-fluid">
+		<div id="loading_overlay">
 			<div id="loading">
 				<p>Loading...</p>
 			</div>
 		</div>
-		<div id="top" class="anchor"></div>
-		<div id="header">
-			<div id="header_left">
-				<div id="logo">
-					<img src="assets/logo.jpg" alt="logo" />
-					<h1>Poudriere</h1>
-				</div>
-			</div>
-			<div id="header_right">
-				<table class="layout">
-					<tr>
-						<td rowspan="2">
-							<div id="build_info">
-								<table border=0>
-									<tr>
-										<th>Jail:</th>
-										<td id="mastername"></td>
-									</tr>
-									<tr>
-										<th>Build:</th>
-										<td id="buildname"></td>
-									</tr>
-									<tr>
-										<th>SVN:</th>
-										<td id="svn_url"></td>
-									</tr>
-								</table>
-							</div>
-						</td>
-						<td>
-							<div id="stats">
-								<table border=1>
-									<thead>
-										<tr>
-											<th>Total</th>
-											<th>Built</th>
-											<th>Failed</th>
-											<th>Skipped</th>
-											<th>Ignored</th>
-											<th>To build</th>
-										</tr>
-									</thead>
-									<tr>
-										<td id="stats_queued" class="queued"></td>
-										<td id="stats_built" class="built"></td>
-										<td id="stats_failed" class="failed"></td>
-										<td id="stats_skipped" class="skipped"></td>
-										<td id="stats_ignored" class="ignored"></td>
-										<td id="stats_remaining" class="remaining"></td>
-									</tr>
-								</table>
-							</div>
-						</td>
-					</tr>
-				</table>
-			</div><!-- #header_right -->
-		</div><!-- #header -->
-		<div id="main">
-			<div id="left">
-				<div id="builders">
-					<h2>Builders</h2>
-					<table id="builders_table">
+		<div class="row">
+			<div class="col-md-12">
+				<div id="latest_builds_div" class="status" style="display: none;">
+					<h2 id="latest_builds">Latest Builds
+						<a href="#"><span class="top-icon glyphicon glyphicon-chevron-up"></span></a>
+					</h2>
+					<table class="display latest_builds table-bordered" id="latest_builds_table">
 						<thead>
 							<tr>
-								<th>Id</th>
-								<th>Origin</th>
+								<th>Portset</th>
+								<th>Master</th>
+								<th>Build</th>
+								<th>Jail</th>
+								<th>Set</th>
+								<th>Ports</th>
+								<th class="queued" title="Queued" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Queued</span><span class="hidden-md hidden-lg">Q</span></th>
+								<th class="built" title="Built" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Built</span><span class="hidden-md hidden-lg">B</span></th>
+								<th class="failed" title="Failed" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Failed</span><span class="hidden-md hidden-lg">F</span></th>
+								<th class="skipped" title="Skipped" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Skipped</span><span class="hidden-md hidden-lg">S</span></th>
+								<th class="ignored" title="Ignored" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Ignored</span><span class="hidden-md hidden-lg">I</span></th>
+								<th class="remaining" title="Remaining" data-toggle="tooltip" data-container="body"><span class="visible-md visible-lg">Remaining</span><span class="hidden-md hidden-lg">R</span></th>
 								<th>Status</th>
+								<th>Elapsed</th>
 							</tr>
 						</thead>
-						<tbody id="builders_body"></tbody>
+						<tbody id="latest_builds_body"></tbody>
 					</table>
-				</div>
-				<br class="clear" />
-			</div>
-			<div id="right">
-				<div id="built" class="anchor status">
-					<h2>Built ports</h2>
-					<table class="built" id="built_table">
-						<thead>
-							<tr>
-								<th>Package</th>
-								<th>Origin</th>
-								<th>Log</th>
-							</tr>
-						</thead>
-						<tbody id="built_body"></tbody>
-					</table>
-				</div>
-				<div id="failed" class="anchor status">
-					<h2>Failed ports</h2>
-					<table class="failed" id="failed_table">
-						<thead>
-							<tr>
-								<th>Package</th>
-								<th>Origin</th>
-								<th>Phase</th>
-								<th>Skipped</th>
-								<th>Log</th>
-							</tr>
-						</thead>
-						<tbody id="failed_body"></tbody>
-					</table>
-				</div>
-				<div id="skipped" class="anchor status">
-					<h2>Skipped ports</h2>
-					<table class="skipped" id="skipped_table">
-						<thead>
-							<tr>
-								<th>Package</th>
-								<th>Origin</th>
-								<th>Reason</th>
-							</tr>
-						</thead>
-						<tbody id="skipped_body"></tbody>
-					</table>
-				</div>
-				<div id="ignored" class="anchor status">
-					<h2>Ignored ports</h2>
-					<table class="ignored" id="ignored_table">
-						<thead>
-							<tr>
-								<th>Package</th>
-								<th>Origin</th>
-								<th>Skipped</th>
-								<th>Reason</th>
-							</tr>
-						</thead>
-						<tbody id="ignored_body"></tbody>
-					</table>
-				</div>
-				<br class="clear" />
-			</div><!-- #right -->
-		</div><!-- #main -->
-		<div id="footer">
-			<div id="nav">
-				<a href="#top" title="top">Top</a>
-				<a href="..">../</a>
-				<a href="logs">All Logs</a>
-				<a href="logs/errors">Error Logs</a>
-			</div>
-			<div id="progress">
-				<canvas id="progressbar" width=502 height=22></canvas>
-			</div>
-		</div>
-	</body>
-</html>
+				</div><!-- #latest_builds -->
+				<br class="clear">
+			</div><!-- /col -->
+		</div><!-- /row -->
+	</div><!-- #main -->
+	<br class="clear">
+	<footer class="navbar-fixed-bottom">
+		<div class="container-fluid">
+			<div class="row">
+				<div class="col-md-12">
+					<a class="pull-right" target="_new" href="http://fossil.etoilebsd.net/poudriere"><span class="glyphicon glyphicon-share-alt"></span>Poudriere</a>
+				</div><!-- /col -->
+			</div><!-- /row -->
+		</div><!-- /container-fluid -->
+	</footer><!-- #footer -->
+	<script src="index_files/jquery-1.js" type="text/javascript"></script>
+	<script src="index_files/jquery.js" type="text/javascript" charset="utf8"></script>
+	<script src="index_files/bootstrap.js" type="text/javascript"></script>
+	<script src="index_files/jquery_002.js" type="text/javascript"></script>
+	<script src="index_files/poudriere.js" type="text/javascript"></script>
+
+
+
+</body></html>
+<!-- vim: set sts=4 sw=4 ts=4 noet: -->

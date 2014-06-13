@@ -51,9 +51,15 @@ Options:
     -t          -- Test the specified ports for leftovers. Add -r to
                    recursively test all dependencies as well.
     -r          -- Resursively test all dependencies as well
+    -k          -- When doing testing with -t, don't consider failures as
+                   fatal; don't skip dependent ports on findings.
     -T          -- Try to build broken ports anyway
     -F          -- Only fetch from original master_site (skip FreeBSD mirrors)
-    -s          -- Skip sanity checks
+    -s          -- Skip incremental rebuild and sanity checks
+    -S          -- Don't recursively rebuild packages affected by other
+                   packages requiring incremental rebuild. This can result
+                   in broken packages if the ones updated do not retain
+                   a stable ABI.
     -J n[:p]    -- Run n jobs in parallel, and optionally run a different
                    number of jobs in parallel while preparing the build.
                    (Defaults to the number of CPUs)
@@ -77,6 +83,7 @@ SCRIPTPATH=`realpath $0`
 SCRIPTPREFIX=`dirname ${SCRIPTPATH}`
 PTNAME="default"
 SKIPSANITY=0
+SKIP_RECURSIVE_REBUILD=0
 SETNAME=""
 CLEAN=0
 CLEAN_LISTED=0
@@ -88,7 +95,7 @@ INTERACTIVE_MODE=0
 
 [ $# -eq 0 ] && usage
 
-while getopts "B:iIf:j:J:CcnNp:RFtrTsvwz:a" FLAG; do
+while getopts "B:iIf:j:J:CcknNp:RFtrTsSvwz:a" FLAG; do
 	case "${FLAG}" in
 		B)
 			BUILDNAME="${OPTARG}"
@@ -96,9 +103,15 @@ while getopts "B:iIf:j:J:CcnNp:RFtrTsvwz:a" FLAG; do
 		t)
 			PORTTESTING=1
 			export DEVELOPER_MODE=yes
+			export NO_WARNING_PKG_INSTALL_EOL=yes
+			export WARNING_WAIT=0
+			export DEV_WARNING_WAIT=0
 			;;
 		r)
 			PORTTESTING_RECURSIVE=1
+			;;
+		k)
+			PORTTESTING_FATAL=no
 			;;
 		T)
 			export TRYBROKEN=yes
@@ -119,7 +132,7 @@ while getopts "B:iIf:j:J:CcnNp:RFtrTsvwz:a" FLAG; do
 			[ "${ATOMIC_PACKAGE_REPOSITORY}" = "yes" ] ||
 			    err 1 "ATOMIC_PACKAGE_REPOSITORY required for dry-run support"
 			DRY_RUN=1
-			DRY_MODE="[Dry Run] "
+			DRY_MODE="${COLOR_DRY_MODE}[Dry Run]${COLOR_RESET} "
 			;;
 		f)
 			LISTPKGS="${LISTPKGS} ${OPTARG}"
@@ -149,6 +162,9 @@ while getopts "B:iIf:j:J:CcnNp:RFtrTsvwz:a" FLAG; do
 		s)
 			SKIPSANITY=1
 			;;
+		S)
+			SKIP_RECURSIVE_REBUILD=1
+			;;
 		w)
 			SAVE_WRKDIR=1
 			;;
@@ -168,7 +184,10 @@ while getopts "B:iIf:j:J:CcnNp:RFtrTsvwz:a" FLAG; do
 	esac
 done
 
+saved_argv="$@"
 shift $((OPTIND-1))
+
+[ ${ALL} -eq 1 -a -n "${PORTTESTING}" ] && PORTTESTING_FATAL=no
 
 : ${BUILD_PARALLEL_JOBS:=${PARALLEL_JOBS}}
 : ${PREPARE_PARALLEL_JOBS:=${PARALLEL_JOBS}}
@@ -176,8 +195,10 @@ PARALLEL_JOBS=${PREPARE_PARALLEL_JOBS}
 
 test -z "${JAILNAME}" && err 1 "Don't know on which jail to run please specify -j"
 
+maybe_run_queued "${saved_argv}"
+
 MASTERNAME=${JAILNAME}-${PTNAME}${SETNAME:+-${SETNAME}}
-MASTERMNT=${POUDRIERE_DATA}/build/${MASTERNAME}/ref
+_mastermnt MASTERMNT
 
 export MASTERNAME
 export MASTERMNT
@@ -189,9 +210,10 @@ read_packages_from_params "$@"
 
 run_hook bulk start
 
+madvise_protect $$
 jail_start ${JAILNAME} ${PTNAME} ${SETNAME}
 
-LOGD=`log_path`
+_log_path LOGD
 if [ -d ${LOGD} -a ${CLEAN} -eq 1 ]; then
 	msg "Cleaning up old logs"
 	rm -f ${LOGD}/*.log 2>/dev/null
@@ -211,9 +233,9 @@ if [ ${DRY_RUN} -eq 1 ]; then
 
 		msg_n "Ports to build: "
 		{
-			find ${MASTERMNT}/poudriere/deps/ -mindepth 1 \
+			find ${MASTERMNT}/.p/deps/ -mindepth 1 \
 			    -maxdepth 1
-			find ${MASTERMNT}/poudriere/pool/ -mindepth 2 \
+			find ${MASTERMNT}/.p/pool/ -mindepth 2 \
 			    -maxdepth 2
 		} | while read pkgpath; do
 			pkgname=${pkgpath##*/}
@@ -235,20 +257,10 @@ bset status "building:"
 
 parallel_build ${JAILNAME} ${PTNAME} ${SETNAME}
 
-bset status "done:"
-
-failed=$(bget ports.failed | awk '{print $1 ":" $3 }' | xargs echo)
-built=$(bget ports.built | awk '{print $1}' | xargs echo)
-ignored=$(bget ports.ignored | awk '{print $1}' | xargs echo)
-skipped=$(bget ports.skipped | awk '{print $1}' | sort -u | xargs echo)
-nbfailed=$(bget stats_failed)
-nbignored=$(bget stats_ignored)
-nbskipped=$(bget stats_skipped)
-nbbuilt=$(bget stats_built)
-[ "$nbfailed" = "-" ] && nbfailed=0
-[ "$nbignored" = "-" ] && nbignored=0
-[ "$nbskipped" = "-" ] && nbskipped=0
-[ "$nbbuilt" = "-" ] && nbbuilt=0
+_bget nbbuilt stats_built
+_bget nbfailed stats_failed
+_bget nbskipped stats_skipped
+_bget nbignored stats_ignored
 # Always create repository if it is missing (but still respect -T)
 if [ $PKGNG -eq 1 ] && \
 	[ ! -f ${MASTERMNT}/packages/digests.txz -o \
@@ -264,41 +276,22 @@ elif [ $nbbuilt -eq 0 ]; then
 		msg "No package built, no need to update INDEX"
 	fi
 	BUILD_REPO=0
-else
-	[ "${NO_RESTRICTED}" != "no" ] && clean_restricted
 fi
+
+[ "${NO_RESTRICTED}" != "no" ] && clean_restricted
 
 [ ${BUILD_REPO} -eq 1 ] && build_repo
 
 commit_packages
 
-if [ $nbbuilt -gt 0 ]; then
-	msg_n "Built ports: "
-	echo ${built}
-	echo ""
-fi
-if [ $nbfailed -gt 0 ]; then
-	msg_n "Failed ports: "
-	echo ${failed}
-	echo ""
-fi
-if [ $nbignored -gt 0 ]; then
-	msg_n "Ignored ports: "
-	echo ${ignored}
-	echo ""
-fi
-if [ $nbskipped -gt 0 ]; then
-	msg_n "Skipped ports: "
-	echo ${skipped}
-	echo ""
-fi
+show_build_results
+
 run_hook bulk done ${nbbuilt} ${nbfailed} ${nbignored} ${nbskipped}
 
 [ ${INTERACTIVE_MODE} -gt 0 ] && enter_interactive
-cleanup
 
-msg "[${MASTERNAME}] $nbbuilt packages built, $nbfailed failures, $nbignored ignored, $nbskipped skipped"
-show_log_info
+bset status "done:"
+cleanup
 
 set +e
 
