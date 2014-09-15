@@ -40,7 +40,8 @@ main(int argc, char **argv)
 {
 	struct sockaddr_un un;
 	struct ucl_parser *parser = NULL;
-	ucl_object_t *conf, *sock_path_o;
+	ucl_object_t *conf;
+	const ucl_object_t *sock_path_o;
 	int pdfd, ch;
 	size_t r;
 	const char *method, *uri, *data;

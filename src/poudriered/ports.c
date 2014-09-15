@@ -59,12 +59,13 @@ ports_list(void)
 		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
 			continue;
 
+		o = ucl_object_typed_new(UCL_OBJECT);
 		snprintf(path, sizeof(path), "%s/method", dp->d_name);
 		if (!read_line_at(portfd, path, &buf, &sz)) {
 			ucl_object_unref(o);
 			continue;
 		}
-		o = ucl_object_insert_key(o,
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "method", 6, false);
 
@@ -73,19 +74,21 @@ ports_list(void)
 			ucl_object_unref(o);
 			continue;
 		}
-		o = ucl_object_insert_key(o,
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "mnt", 3, false);
 
 		/* Not mandatory */
 		snprintf(path, sizeof(path), "%s/fs", dp->d_name);
 		if (read_line_at(portfd, path, &buf, &sz)) {
-			o = ucl_object_insert_key(o,
+			ucl_object_insert_key(o,
 			    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 			    "fs", 2, false);
 		}
 
-		ports = ucl_object_insert_key(ports, o, dp->d_name, dp->d_namlen, false);
+		if (ports == NULL)
+			ports = ucl_object_typed_new(UCL_OBJECT);
+		ucl_object_insert_key(ports, o, dp->d_name, dp->d_namlen, false);
 	}
 
 	if (sz > 0)

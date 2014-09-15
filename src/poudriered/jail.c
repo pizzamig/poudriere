@@ -55,14 +55,17 @@ jail_list(void)
 	dirp = fdopendir(jailfd);
 
 	while ((dp = readdir(dirp)) != NULL) {
-		o = NULL;
 		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
 			continue;
 
+		o = ucl_object_typed_new(UCL_OBJECT);
 		snprintf(path, sizeof(path), "%s/arch", dp->d_name);
-		if (!read_line_at(jailfd, path, &buf, &sz))
+		if (!read_line_at(jailfd, path, &buf, &sz)) {
+			ucl_object_unref(o);
 			continue;
-		o = ucl_object_insert_key(o,
+		}
+
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "arch", 4, false);
 
@@ -71,7 +74,7 @@ jail_list(void)
 			ucl_object_unref(o);
 			continue;
 		}
-		o = ucl_object_insert_key(o,
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "method", 6, false);
 
@@ -80,7 +83,7 @@ jail_list(void)
 			ucl_object_unref(o);
 			continue;
 		}
-		o = ucl_object_insert_key(o,
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "mnt", 3, false);
 
@@ -89,19 +92,21 @@ jail_list(void)
 			ucl_object_unref(o);
 			continue;
 		}
-		o = ucl_object_insert_key(o,
+		ucl_object_insert_key(o,
 		    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 		    "version", 7, false);
 
 		/* Not mandatory */
 		snprintf(path, sizeof(path), "%s/fs", dp->d_name);
 		if (read_line_at(jailfd, path, &buf, &sz)) {
-			o = ucl_object_insert_key(o,
+			ucl_object_insert_key(o,
 			    ucl_object_fromstring_common(buf, strlen(buf), UCL_STRING_TRIM),
 			    "fs", 2, false);
 		}
 
-		jails = ucl_object_insert_key(jails, o, dp->d_name, dp->d_namlen, false);
+		if (jails == NULL)
+			jails = ucl_object_typed_new(UCL_OBJECT);
+		ucl_object_insert_key(jails, o, dp->d_name, dp->d_namlen, false);
 	}
 
 	if (sz > 0)
