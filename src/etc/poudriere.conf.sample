@@ -159,7 +159,7 @@ DISTFILES_CACHE=/usr/ports/distfiles
 # List of packages that will always be allowed to use MAKE_JOBS
 # regardless of ALLOW_MAKE_JOBS. This is useful for allowing ports
 # which holdup the rest of the queue to build more quickly.
-#ALLOW_MAKE_JOBS_PACKAGES="pkg ccache"
+#ALLOW_MAKE_JOBS_PACKAGES="pkg ccache py*"
 
 # Timestamp every line of build logs
 # Default: no
@@ -241,3 +241,9 @@ DISTFILES_CACHE=/usr/ports/distfiles
 # Use colors when in a TTY
 # Default: yes
 #USE_COLORS=yes
+
+# Only build what is requested. Do not rebuild build deps if nothing requested
+# depends on them. This can create an inconsistent repository if you often
+# build one-off packages but expect the repository to stay consistent.
+# Defaut: yes
+#TRIM_ORPHANED_BUILD_DEPS=yes

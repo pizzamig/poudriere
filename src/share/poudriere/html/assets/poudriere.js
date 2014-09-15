@@ -165,6 +165,9 @@ function update_canvas(stats) {
 	x += minidraw(x, height, width, context, "#CC6633", queued, skipped);
 
 	pctdone = ((queued - remaining) * 100) / queued;
+	if (isNaN(pctdone)) {
+		pctdone = 0;
+	}
 	if (pctdone < 1.0 && pctdone != 0) {
 		pctdonetxt = "< 1";
 	} else {
@@ -626,7 +629,7 @@ function process_data_jail(data) {
 			if (isNaN(remaining)) {
 				remaining = 0;
 			}
-			row.remaining = remaining;
+			row.stat_remaining = remaining;
 			row.status = translate_status(build.status);
 			row.elapsed = build.elapsed ? build.elapsed : "";
 

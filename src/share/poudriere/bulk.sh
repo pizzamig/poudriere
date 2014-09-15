@@ -37,7 +37,8 @@ Parameters:
 
 Options:
     -B name     -- What buildname to use (must be unique, defaults to
-                   YYYY-MM-DD_HH:MM:SS)
+                   YYYY-MM-DD_HH:MM:SS). Resuming a previous build will not
+                   retry built/failed/skipped/ignored packages.
     -c          -- Clean all the previously built binary packages
     -C          -- Clean only the packages listed on the command line or
                    -f file
@@ -102,7 +103,6 @@ while getopts "B:iIf:j:J:CcknNp:RFtrTsSvwz:a" FLAG; do
 			;;
 		t)
 			PORTTESTING=1
-			export DEVELOPER_MODE=yes
 			export NO_WARNING_PKG_INSTALL_EOL=yes
 			export WARNING_WAIT=0
 			export DEV_WARNING_WAIT=0
@@ -261,7 +261,7 @@ _bget nbbuilt stats_built
 _bget nbfailed stats_failed
 _bget nbskipped stats_skipped
 _bget nbignored stats_ignored
-# Always create repository if it is missing (but still respect -T)
+# Always create repository if it is missing (but still respect -N)
 if [ $PKGNG -eq 1 ] && \
 	[ ! -f ${MASTERMNT}/packages/digests.txz -o \
 	  ! -f ${MASTERMNT}/packages/packagesite.txz ]; then

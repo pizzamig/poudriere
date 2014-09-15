@@ -56,8 +56,8 @@ Options:
                      obtaining and building the jail. See poudriere(8) for more
                      details. Can be one of:
                        allbsd, csup, ftp, http, ftp-archve, null, src, svn,
-                       svn+file, svn+http, svn+https, svn+file, svn+ssh
-                       tar=PATH, url=SOMEURL
+                       svn+file, svn+http, svn+https, svn+ssh, tar=PATH
+                       url=SOMEURL
     -P patch      -- Specify a patch to apply to the source before building.
     -t version    -- Version of FreeBSD to upgrade the jail to.
 
@@ -147,6 +147,7 @@ update_version_env() {
 	osversion=`awk '/\#define __FreeBSD_version/ { print $3 }' ${JAILMNT}/usr/include/sys/param.h`
 	login_env=",UNAME_r=${release% *},UNAME_v=FreeBSD ${release},OSVERSION=${osversion}"
 
+	# XXX - Need to support qemu here
 	# Check TARGET=i386 not TARGET_ARCH due to pc98/i386
 	[ "${ARCH%.*}" = "i386" -a "${REALARCH}" = "amd64" ] &&
 		login_env="${login_env},UNAME_p=i386,UNAME_m=i386"
@@ -639,7 +640,6 @@ info_jail() {
 	local jversion jarch jmethod pmethod
 
 	jail_exists ${JAILNAME} || err 1 "No such jail: ${JAILNAME}"
-	porttree_exists ${PTNAME} || err 1 "No such tree: ${PTNAME}"
 
 	POUDRIERE_BUILD_TYPE=bulk
 	BUILDNAME=latest
@@ -659,62 +659,44 @@ info_jail() {
 	_jget jarch ${JAILNAME} arch
 	_jget jmethod ${JAILNAME} method
 	_jget timestamp ${JAILNAME} timestamp 2>/dev/null || :
-	_pget pmethod ${PTNAME} method
 
 	echo "Jail name:         ${JAILNAME}"
 	echo "Jail version:      ${jversion}"
 	echo "Jail arch:         ${jarch}"
-	echo "Jail method:      ${jmethod}"
+	echo "Jail method:       ${jmethod}"
 	if [ -n "${timestamp}" ]; then
 		echo "Jail updated:      $(date -j -r ${timestamp} "+%Y-%m-%d %H:%M:%S")"
 	fi
-	echo "Tree name:         ${PTNAME}"
-	echo "Tree method:       ${pmethod:--}"
-#	echo "Tree updated:      $(pget ${PTNAME} timestamp)"
-	echo "Status:            ${status}"
-	if calculate_elapsed_from_log ${now} ${log}; then
-		start_time=${_start_time}
-		elapsed=${_elapsed_time}
-		building_started=$(date -j -r ${start_time} "+%Y-%m-%d %H:%M:%S")
-		elapsed_days=$((elapsed/86400))
-		calculate_duration elapsed_hms "${elapsed}"
-		case ${elapsed_days} in
-			0) elapsed_timestamp="${elapsed_hms}" ;;
-			1) elapsed_timestamp="1 day, ${elapsed_hms}" ;;
-			*) elapsed_timestamp="${elapsed_days} days, ${elapsed_hms}" ;;
-		esac
-		echo "Building started:  ${building_started}"
-		echo "Elapsed time:      ${elapsed_timestamp}"
-		echo "Packages built:    ${nbb}"
-		echo "Packages failed:   ${nbf}"
-		echo "Packages ignored:  ${nbi}"
-		echo "Packages skipped:  ${nbs}"
-		echo "Packages total:    ${nbq}"
-		echo "Packages left:     ${tobuild}"
+	if porttree_exists ${PTNAME}; then
+		_pget pmethod ${PTNAME} method
+		echo "Tree name:         ${PTNAME}"
+		echo "Tree method:       ${pmethod:--}"
+#		echo "Tree updated:      $(pget ${PTNAME} timestamp)"
+		echo "Status:            ${status}"
+		if calculate_elapsed_from_log ${now} ${log}; then
+			start_time=${_start_time}
+			elapsed=${_elapsed_time}
+			building_started=$(date -j -r ${start_time} "+%Y-%m-%d %H:%M:%S")
+			elapsed_days=$((elapsed/86400))
+			calculate_duration elapsed_hms "${elapsed}"
+			case ${elapsed_days} in
+				0) elapsed_timestamp="${elapsed_hms}" ;;
+				1) elapsed_timestamp="1 day, ${elapsed_hms}" ;;
+				*) elapsed_timestamp="${elapsed_days} days, ${elapsed_hms}" ;;
+			esac
+			echo "Building started:  ${building_started}"
+			echo "Elapsed time:      ${elapsed_timestamp}"
+			echo "Packages built:    ${nbb}"
+			echo "Packages failed:   ${nbf}"
+			echo "Packages ignored:  ${nbi}"
+			echo "Packages skipped:  ${nbs}"
+			echo "Packages total:    ${nbq}"
+			echo "Packages left:     ${tobuild}"
+		fi
 	fi
 
 	unset POUDRIERE_BUILD_TYPE
 }
-
-SCRIPTPATH=`realpath $0`
-SCRIPTPREFIX=`dirname ${SCRIPTPATH}`
-. ${SCRIPTPREFIX}/common.sh
-
-get_host_arch ARCH
-REALARCH=${ARCH}
-START=0
-STOP=0
-LIST=0
-DELETE=0
-CREATE=0
-RENAME=0
-QUIET=0
-NAMEONLY=0
-INFO=0
-UPDATE=0
-PTNAME=default
-SETNAME=""
-BINMISC="/usr/sbin/binmiscctl"
 
 need_emulation() {
 	[ $# -eq 2 ] || eargs need_emulation real_arch wanted_arch
@@ -747,6 +729,26 @@ check_emulation() {
 		    err 1 "You need to setup an emulator with binmiscctl(8) for ${ARCH}"
 	fi
 }
+
+SCRIPTPATH=`realpath $0`
+SCRIPTPREFIX=`dirname ${SCRIPTPATH}`
+. ${SCRIPTPREFIX}/common.sh
+
+get_host_arch ARCH
+REALARCH=${ARCH}
+START=0
+STOP=0
+LIST=0
+DELETE=0
+CREATE=0
+RENAME=0
+QUIET=0
+NAMEONLY=0
+INFO=0
+UPDATE=0
+PTNAME=default
+SETNAME=""
+BINMISC="/usr/sbin/binmiscctl"
 
 while getopts "iJ:j:v:a:z:m:nf:M:sdklqcip:r:ut:z:P:" FLAG; do
 	case "${FLAG}" in

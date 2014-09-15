@@ -86,19 +86,22 @@ send_object(struct client *cl, ucl_object_t *o)
 	ucl_object_unref(o);
 }
 
+
 static void
-send_error(struct client *cl, const char *msg) {
+send_error(struct client *cl, const char *msg)
+{
 	ucl_object_t *umsg = NULL;
 	ucl_object_t *o;
-	
+
 	umsg = ucl_object_typed_new(UCL_OBJECT);
 	o = ucl_object_fromstring_common("error", 5, 0);
 	ucl_object_insert_key(umsg, o, "type", 4, true);
-	o = ucl_object_fromstring_common(msg, strlen(msg),UCL_STRING_TRIM);
+	o = ucl_object_fromstring_common(msg, strlen(msg), UCL_STRING_TRIM);
 	ucl_object_insert_key(umsg, o, "message", 7, true);
 
 	send_object(cl, umsg);
 }
+
 
 static ucl_object_t *
 load_conf(void)
@@ -108,7 +111,7 @@ load_conf(void)
 
 	parser = ucl_parser_new(UCL_PARSER_KEY_LOWERCASE);
 
-	if (!ucl_parser_add_file(parser, PREFIX"/etc/poudriered.conf")) {
+	if (!ucl_parser_add_file(parser, PREFIX "/etc/poudriered.conf")) {
 		warnx("Failed to parse configuration file: %s",
 		    ucl_parser_get_error(parser));
 		return (NULL);
@@ -121,8 +124,10 @@ load_conf(void)
 	return (obj);
 }
 
+
 ucl_object_t *
-reload() {
+reload()
+{
 	ucl_object_t *nconf;
 
 	nconf = load_conf();
@@ -134,20 +139,24 @@ reload() {
 	return (nconf);
 }
 
+
 static void
-reload_signal() {
+reload_signal()
+{
 	(void)reload();
 }
 
+
 static void
-close_socket(int dummy) {
+close_socket(int dummy)
+{
 	if (server_fd != -1)
 		close(server_fd);
 
 	const ucl_object_t *o;
 	o = ucl_object_find_key(conf, "socket");
 
-	if (o == NULL || o->type != UCL_STRING) {
+	if ((o == NULL) || (o->type != UCL_STRING)) {
 		ucl_object_unref(conf);
 		exit(dummy);
 	}
@@ -157,6 +166,7 @@ close_socket(int dummy) {
 
 	exit(dummy);
 }
+
 
 void
 client_free(struct client *cl)
@@ -168,29 +178,36 @@ client_free(struct client *cl)
 	free(cl);
 }
 
+
 static bool
 valid_user(const ucl_object_t *o, struct client *cl)
 {
 	struct passwd *pw;
 
 	switch (o->type) {
-		case UCL_STRING:
-			if (ucl_object_tostring(o)[0] == '*')
-				return (true);
-			pw = getpwnam(ucl_object_tostring(o));
-			if (pw && pw->pw_uid == cl->uid)
-				return (true);
-			break;
-		case UCL_INT:
-			if (cl->uid == ucl_object_toint(o))
-				return (true);
-			break;
-		default:
-			break;
+	case UCL_STRING:
+		if (ucl_object_tostring(o)[0] == '*')
+			return (true);
+
+		pw = getpwnam(ucl_object_tostring(o));
+		if (pw && (pw->pw_uid == cl->uid))
+			return (true);
+
+		break;
+
+	case UCL_INT:
+		if (cl->uid == ucl_object_toint(o))
+			return (true);
+
+		break;
+
+	default:
+		break;
 	}
 
 	return (false);
 }
+
 
 static bool
 valid_group(const ucl_object_t *o, struct client *cl)
@@ -198,27 +215,33 @@ valid_group(const ucl_object_t *o, struct client *cl)
 	struct group *gr;
 
 	switch (o->type) {
-		case UCL_STRING:
-			if (ucl_object_tostring(o)[0] == '*')
-				return (true);
-			gr = getgrnam(ucl_object_tostring(o));
-			if (gr && gr->gr_gid == cl->gid)
-				return (true);
-			break;
-		case UCL_INT:
-			if (cl->gid == ucl_object_toint(o))
-				return (true);
-			break;
-		default:
-			break;
+	case UCL_STRING:
+		if (ucl_object_tostring(o)[0] == '*')
+			return (true);
+
+		gr = getgrnam(ucl_object_tostring(o));
+		if (gr && (gr->gr_gid == cl->gid))
+			return (true);
+
+		break;
+
+	case UCL_INT:
+		if (cl->gid == ucl_object_toint(o))
+			return (true);
+
+		break;
+
+	default:
+		break;
 	}
 
 	return (false);
 }
 
-static int
-check_argument(const ucl_object_t *cmd, struct client *cl, const char *arg) {
 
+static int
+check_argument(const ucl_object_t *cmd, struct client *cl, const char *arg)
+{
 	const ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
 	ucl_object_iter_t it = NULL;
 
@@ -233,34 +256,34 @@ check_argument(const ucl_object_t *cmd, struct client *cl, const char *arg) {
 		if (!wild)
 			wild = ucl_object_find_key(tmp, "*");
 	}
-	
-	if (cred == NULL && wild == NULL)
+
+	if ((cred == NULL) && (wild == NULL))
 		return (0);
 
 	/* check the groups */
 	o = ucl_object_find_key(cred, "group");
 	if (o != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(o, &it, false))) {
+		while ((tmp = ucl_iterate_object(o, &it, false)))
 			if (valid_group(o, cl))
 				return (1);
-		}
 	}
 
 	o = ucl_object_find_key(cred, "user");
 	if (o != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(o, &it, false))) {
+		while ((tmp = ucl_iterate_object(o, &it, false)))
 			if (valid_user(o, cl))
 				return (1);
-		}
 	}
 
 	return (0);
 }
 
+
 static bool
-is_arguments_allowed(const ucl_object_t *a, const ucl_object_t *cmd, struct client *cl)
+is_arguments_allowed(const ucl_object_t *a, const ucl_object_t *cmd,
+    struct client *cl)
 {
 	int nbargs, ok, argc, argvl, i;
 	char **argv = NULL;
@@ -296,8 +319,10 @@ is_arguments_allowed(const ucl_object_t *a, const ucl_object_t *cmd, struct clie
 	return (ok == nbargs);
 }
 
+
 static bool
-is_command_allowed(const ucl_object_t *req, struct client *cl, const ucl_object_t **ret)
+is_command_allowed(const ucl_object_t *req, struct client *cl,
+    const ucl_object_t **ret)
 {
 	const ucl_object_t *cred_cmds, *cred, *tmp, *wild, *o;
 	ucl_object_iter_t it = NULL;
@@ -315,7 +340,7 @@ is_command_allowed(const ucl_object_t *req, struct client *cl, const ucl_object_
 			wild = ucl_object_find_key(tmp, "*");
 	}
 
-	if (cred == NULL && wild == NULL)
+	if ((cred == NULL) && (wild == NULL))
 		return (false);
 
 	if (!cred)
@@ -327,23 +352,22 @@ is_command_allowed(const ucl_object_t *req, struct client *cl, const ucl_object_
 	o = ucl_object_find_key(cred, "group");
 	if (o != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(o, &it, false))) {
+		while ((tmp = ucl_iterate_object(o, &it, false)))
 			if (valid_group(tmp, cl))
 				return (true);
-		}
 	}
 	/* check the users */
 	o = ucl_object_find_key(cred, "user");
 	if (o != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(o, &it, false))) {
+		while ((tmp = ucl_iterate_object(o, &it, false)))
 			if (valid_user(tmp, cl))
 				return (true);
-		}
 	}
 
 	return (false);
 }
+
 
 static bool
 is_operation_allowed(const ucl_object_t *o, struct client *cl)
@@ -363,7 +387,7 @@ is_operation_allowed(const ucl_object_t *o, struct client *cl)
 			wild = ucl_object_find_key(tmp, "*");
 	}
 
-	if (cred == NULL && wild == NULL)
+	if ((cred == NULL) && (wild == NULL))
 		return (false);
 
 	if (!cred)
@@ -373,24 +397,23 @@ is_operation_allowed(const ucl_object_t *o, struct client *cl)
 	obj = ucl_object_find_key(cred, "group");
 	if (obj != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(obj, &it, false))) {
+		while ((tmp = ucl_iterate_object(obj, &it, false)))
 			if (valid_group(tmp, cl))
 				return (true);
-		}
 	}
 
 	/* check users */
 	obj = ucl_object_find_key(cred, "user");
 	if (obj != NULL) {
 		it = NULL;
-		while ((tmp = ucl_iterate_object(obj, &it, false))) {
+		while ((tmp = ucl_iterate_object(obj, &it, false)))
 			if (valid_user(tmp, cl))
 				return (true);
-		}
 	}
 
 	return (false);
 }
+
 
 static int
 mkdirs(const char *_path, bool lastisfile)
@@ -415,7 +438,7 @@ mkdirs(const char *_path, bool lastisfile)
 			*p = '\0';
 
 		if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) < 0)
-			if (errno != EEXIST && errno != EISDIR)
+			if ((errno != EEXIST) && (errno != EISDIR))
 				err(EXIT_FAILURE, "mkdir");
 
 		/* that was the last element of the path */
@@ -431,7 +454,8 @@ mkdirs(const char *_path, bool lastisfile)
 
 
 static void
-execute_cmd() {
+execute_cmd()
+{
 	posix_spawn_file_actions_t action;
 	int logfd;
 	pid_t pid;
@@ -450,7 +474,7 @@ execute_cmd() {
 	if (l != NULL)
 		mkdirs(ucl_object_tostring(l), true);
 	logfd = open(l != NULL ? ucl_object_tostring(l) : "/tmp/poudriered.log",
-	    O_CREAT|O_RDWR|O_TRUNC,0644);
+		O_CREAT|O_RDWR|O_TRUNC, 0644);
 	if (logfd == -1)
 		logfd = open("/dev/null", O_RDWR);
 
@@ -471,7 +495,7 @@ execute_cmd() {
 		while ((arg = strsep(&buf, "\t \n")) != NULL) {
 			if (*arg == '\0')
 				continue;
-			if (argc > argvl -2 ) {
+			if (argc > argvl -2) {
 				argvl += 1024;
 				argv = reallocf(argv, argvl * sizeof(char *));
 			}
@@ -480,8 +504,8 @@ execute_cmd() {
 		argv[argc+1] = NULL;
 	}
 
-	if ((error = posix_spawn(&pid, PREFIX"/bin/poudriere",
-		&action, NULL, argv, environ)) != 0) {
+	if ((error = posix_spawn(&pid, PREFIX "/bin/poudriere",
+	    &action, NULL, argv, environ)) != 0) {
 		errno = error;
 		close(logfd);
 		warn("Cannot run poudriere");
@@ -495,12 +519,12 @@ execute_cmd() {
 done:
 	free(tofree);
 	free(argv);
-
-	return;
 }
 
+
 static void
-process_queue(void) {
+process_queue(void)
+{
 	if (running != NULL)
 		return;
 
@@ -508,6 +532,7 @@ process_queue(void) {
 
 	execute_cmd();
 }
+
 
 static bool
 append_to_queue(const ucl_object_t *cmd)
@@ -521,6 +546,7 @@ append_to_queue(const ucl_object_t *cmd)
 	return (true);
 }
 
+
 static void
 client_exec(struct client *cl)
 {
@@ -528,7 +554,7 @@ client_exec(struct client *cl)
 	ucl_object_t *msg;
 	bool cmd_allowed = false;
 
-        syslog(LOG_INFO, "uid(%d) sent request: %s", cl->uid,
+	syslog(LOG_INFO, "uid(%d) sent request: %s", cl->uid,
 	    ucl_object_emit(cl->req, UCL_EMIT_JSON_COMPACT));
 
 	cmd = ucl_object_find_key(cl->req, "data");
@@ -536,18 +562,18 @@ client_exec(struct client *cl)
 	if ((c = ucl_object_find_key(cmd, "operation"))) {
 		/* The user specified an operation not a command */
 		if (is_operation_allowed(c, cl)) {
-			if (!strcmp(ucl_object_tostring(c), "quit")) {
+			if (!strcmp(ucl_object_tostring(c), "quit"))
 				close_socket(EXIT_SUCCESS);
-			} else if (!strcmp(ucl_object_tostring(c), "reload")) {
+			else if (!strcmp(ucl_object_tostring(c), "reload")) {
 				ucl_object_t *nconf = reload();
 				msg = ucl_object_typed_new(UCL_OBJECT);
 				ucl_object_insert_key(msg,
 				    ucl_object_frombool(nconf != NULL),
 				    "reload", 6, true);
 				send_object(cl, msg);
-			} else if (!strcmp(ucl_object_tostring(c), "queue")) {
+			} else if (!strcmp(ucl_object_tostring(c), "queue"))
 				send_object(cl, queue);
-			} else if (!strcmp(ucl_object_tostring(c), "status")) {
+			else if (!strcmp(ucl_object_tostring(c), "status")) {
 				msg = ucl_object_typed_new(UCL_OBJECT);
 				ucl_object_insert_key(msg,
 				    ucl_object_fromstring(running ? "running" :
@@ -579,25 +605,24 @@ client_exec(struct client *cl)
 					    "ports", 5, true);
 				send_object(cl, msg);
 			}
-		} else {
+		} else
 			send_error(cl, "permission denied");
-		}
 		return;
 	}
 
 	c = ucl_object_find_key(cmd, "command");
-	if (c == NULL || c->type != UCL_STRING) {
+	if ((c == NULL) || (c->type != UCL_STRING)) {
 		send_error(cl, "No command specified");
 		return;
 	}
 	/* validate credentials */
 	cmd_allowed = is_command_allowed(c, cl, &cmd_cred);
 
-	if (!cmd_allowed && cmd_cred != NULL) {
+	if (!cmd_allowed && (cmd_cred != NULL)) {
 		c = ucl_object_find_key(cmd, "arguments");
-		if (c && c->type != UCL_STRING)
+		if (c && (c->type != UCL_STRING))
 			send_error(cl, "Expecting a string for the arguments");
-		if (c && c->type == UCL_STRING)
+		if (c && (c->type == UCL_STRING))
 			cmd_allowed = is_arguments_allowed(c, cmd_cred, cl);
 	}
 
@@ -614,6 +639,7 @@ client_exec(struct client *cl)
 	}
 }
 
+
 static void
 client_read(struct client *cl, long len)
 {
@@ -622,7 +648,7 @@ client_read(struct client *cl, long len)
 	struct sbuf *b = sbuf_new_auto();
 
 	r = read(cl->fd, buf, sizeof(buf));
-	if (r < 0 && (errno == EINTR || errno == EAGAIN))
+	if ((r < 0) && ((errno == EINTR) || (errno == EAGAIN)))
 		return;
 
 	sbuf_bcat(b, buf, r);
@@ -633,6 +659,7 @@ client_read(struct client *cl, long len)
 	}
 	sbuf_delete(b);
 }
+
 
 static struct client *
 client_new(int fd)
@@ -650,13 +677,14 @@ client_new(int fd)
 	cl->fd = accept(fd, (struct sockaddr *)&(cl->ss), &sz);
 
 	if (cl->fd < 0) {
-		if (errno == EINTR || errno == EAGAIN || errno == EPROTO) {
+		if ((errno == EINTR) || (errno == EAGAIN) ||
+		    (errno == EPROTO)) {
 			client_free(cl);
 			return (NULL);
 		}
 		err(EXIT_FAILURE, "accept()");
 	}
-	
+
 	if (getpeereid(cl->fd, &cl->uid, &cl->gid) != 0)
 		err(EXIT_FAILURE, "getpeereid()");
 
@@ -668,8 +696,10 @@ client_new(int fd)
 	return (cl);
 }
 
+
 static void
-check_schedules() {
+check_schedules()
+{
 	struct tm *now;
 	time_t now_t;
 	const ucl_object_t *o, *tmp, *cmd, *when, *dateformat;
@@ -686,9 +716,9 @@ check_schedules() {
 		when = ucl_object_find_key(tmp, "when");
 		dateformat = ucl_object_find_key(tmp, "format");
 		cmd = ucl_object_find_key(tmp, "cmd");
-		if (cmd == NULL ||
-		    when == NULL ||
-		    dateformat == NULL)
+		if ((cmd == NULL) ||
+		    (when == NULL) ||
+		    (dateformat == NULL))
 			continue;
 
 #ifdef HAVE_STRFTIME_L
@@ -707,8 +737,10 @@ check_schedules() {
 	}
 }
 
+
 static void
-serve(void) {
+serve(void)
+{
 	struct kevent *evlist = NULL;
 	struct client *cl;
 	int nev, i;
@@ -722,7 +754,7 @@ serve(void) {
 		kevent(kq, &ke, 1, NULL, 0, NULL);
 		nbevq++;
 	}
-	EV_SET(&ke, server_fd,  EVFILT_READ, EV_ADD, 0, 0, NULL);
+	EV_SET(&ke, server_fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	kevent(kq, &ke, 1, NULL, 0, NULL);
 	nbevq++;
 
@@ -733,13 +765,14 @@ serve(void) {
 			if ((evlist = malloc(max_queues *
 			    sizeof(struct kevent))) == NULL)
 				errx(EXIT_FAILURE, "Unable to allocate memory");
+
 		}
 
 		nev = kevent(kq, NULL, 0, evlist, max_queues, NULL);
 		for (i = 0; i < nev; i++) {
 			/* New client */
-			if (evlist[i].udata == NULL && evlist[i].filter ==
-			    EVFILT_READ) {
+			if ((evlist[i].udata == NULL) && (evlist[i].filter ==
+			    EVFILT_READ)) {
 				/* We are in the listener */
 				if ((cl = client_new(evlist[i].ident)) == NULL)
 					continue;
@@ -749,13 +782,13 @@ serve(void) {
 				kevent(kq, &ke, 1, NULL, 0, NULL);
 				nbevq++;
 				continue;
-			} 
+			}
 
 			/* Reading from client */
 			if (evlist[i].filter == EVFILT_READ) {
 				if (evlist[i].flags & (EV_ERROR | EV_EOF)) {
 					/* Do an extra read on EOF as kqueue
-					 * will send this even if there is 
+					 * will send this even if there is
 					 * data still available. */
 					if (evlist[i].flags & EV_EOF)
 						client_read(evlist[i].udata,
@@ -789,11 +822,11 @@ serve(void) {
 
 			if (evlist[i].filter == EVFILT_TIMER)
 				check_schedules();
-
 		}
 		process_queue();
 	}
 }
+
 
 int
 main(void)
@@ -834,12 +867,11 @@ main(void)
 	}
 
 	pfh = pidfile_open(ucl_object_tostring(pidfile_path_o), 0644,
-	    &otherpid);
+		&otherpid);
 	if (pfh == NULL) {
-		if (errno == EEXIST) {
+		if (errno == EEXIST)
 			errx(EXIT_FAILURE, "Daemon already running, pid: %jd.",
 			    (intmax_t)otherpid);
-		}
 		/* If we cannot create pidfile from other reasons, only warn. */
 		warn("Cannot open or create pidfile");
 	}
@@ -856,13 +888,13 @@ main(void)
 	un.sun_family = AF_UNIX;
 	strlcpy(un.sun_path, ucl_object_tostring(sock_path_o),
 	    sizeof(un.sun_path));
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (int[]){1},
+	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (int[]){ 1 },
 	    sizeof(int)) < 0) {
 		ucl_object_unref(conf);
 		err(EXIT_FAILURE, "setsockopt()");
 	}
 
-	if (bind(server_fd, (struct sockaddr *) &un,
+	if (bind(server_fd, (struct sockaddr *)&un,
 	    sizeof(struct sockaddr_un)) == -1) {
 		ucl_object_unref(conf);
 		err(EXIT_FAILURE, "bind()");

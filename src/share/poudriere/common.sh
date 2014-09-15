@@ -40,6 +40,7 @@ was_a_jail_run() {
 }
 # Return true if output via msg() should show elapsed time
 should_show_elapsed() {
+	[ -z "${TIME_START}" ] && return 1
 	[ "${NO_ELAPSED_IN_MSG:-0}" -eq 1 ] && return 1
 	case "${0##*/}" in
 		daemon.sh) ;;
@@ -99,6 +100,62 @@ err() {
 		bset status "${EXIT_STATUS:-crashed:}" 2>/dev/null || :
 	msg_error "$2"
 	exit $1
+}
+
+msg_n() {
+	local now elapsed
+
+	elapsed=
+	if should_show_elapsed; then
+		now=$(date +%s)
+		calculate_duration elapsed "$((${now} - ${TIME_START}))"
+		elapsed="[${elapsed}] "
+	fi
+	printf "${elapsed}${DRY_MODE}${COLOR_ARROW}====>>${COLOR_RESET} ${1}${COLOR_RESET_REAL}"
+}
+
+msg() { msg_n "$@"; echo; }
+
+msg_verbose() {
+	[ ${VERBOSE} -gt 0 ] || return 0
+	msg "$1"
+}
+
+msg_error() {
+	COLOR_ARROW="${COLOR_ERROR}" \
+	    msg "${COLOR_ERROR}Error: $1" >&2
+	[ -n "${MY_JOBID}" ] && COLOR_ARROW="${COLOR_ERROR}" \
+	    job_msg "${COLOR_ERROR}Error: $1"
+	return 0
+}
+
+msg_debug() {
+	[ ${VERBOSE} -gt 1 ] || return 0
+	COLOR_ARROW="${COLOR_DEBUG}" \
+	    msg "${COLOR_DEBUG}Debug: $@" >&2
+}
+
+msg_warn() {
+	COLOR_ARROW="${COLOR_WARN}" \
+	    msg "${COLOR_WARN}Warning: $@" >&2
+}
+
+job_msg() {
+	local now elapsed NO_ELAPSED_IN_MSG
+
+	if [ -n "${MY_JOBID}" ]; then
+		NO_ELAPSED_IN_MSG=0
+		now=$(date +%s)
+		calculate_duration elapsed "$((${now} - ${TIME_START_JOB}))"
+		msg "[${COLOR_JOBID}${MY_JOBID}${COLOR_RESET}][${elapsed}] $1" >&5
+	else
+		msg "$1"
+	fi
+}
+
+job_msg_verbose() {
+	[ ${VERBOSE} -gt 0 ] || return 0
+	job_msg "$@"
 }
 
 _mastermnt() {
@@ -222,6 +279,7 @@ run_hook() {
 		POUDRIERED="${POUDRIERED}" \
 		POUDRIERE_DATA="${POUDRIERE_DATA}" \
 		MASTERNAME="${MASTERNAME}" \
+		MASTERMNT="${MASTERMNT}" \
 		BUILDNAME="${BUILDNAME}" \
 		JAILNAME="${JAILNAME}" \
 		PTNAME="${PTNAME}" \
@@ -265,7 +323,7 @@ log_start() {
 		[ "${USE_COLORS}" = "yes" ] && stripcolors_pipe="stripcolors |"
 		[ "${TIMESTAMP_LOGS}" = "yes" ] && add_ts_pipe="timestamp |"
 		eval ${add_ts_pipe} ${stripcolors_pipe} tee ${logfile}
-	} < ${logfile}.pipe >&3 &
+	} < ${logfile}.pipe &
 	tpid=$!
 	exec > ${logfile}.pipe 2>&1
 
@@ -972,7 +1030,7 @@ do_jail_mounts() {
 	fi
 
 	# Mount /usr/src into target, no need for anything to write to it
-	[ -d "${from}/usr/src" ] && \
+	[ -d "${from}/usr/src" -a "${from}" != "${mnt}" ] && \
 	    ${NULLMOUNT} -o ro ${from}/usr/src ${mnt}/usr/src
 
 	# ref jail only needs devfs
@@ -983,9 +1041,13 @@ do_jail_mounts() {
 			devfs -m ${mnt}/dev/ rule apply path "${p}" unhide
 		done
 	fi
-	if [ "${mnt##*/}" != "ref" ]; then
-		[ ${JAILED} -eq 0 -o "${PATCHED_FS_KERNEL}" = "yes" ] && mount -t fdescfs fdesc ${mnt}/dev/fd
-		mount -t procfs proc ${mnt}/proc
+
+	# Only do this in cloned build jails. from==mnt is via jail -u
+	if [ "${mnt##*/}" != "ref" -a "${from}" != "${mnt}" ]; then
+		[ "${USE_FDESCFS}" = "yes" ] && \
+		    [ ${JAILED} -eq 0 -o "${PATCHED_FS_KERNEL}" = "yes" ] && \
+		    mount -t fdescfs fdesc ${mnt}/dev/fd
+		[ "${USE_PROCFS}" = "yes" ] && mount -t procfs proc ${mnt}/proc
 		if [ -z "${NOLINUX}" ]; then
 			[ "${arch}" = "i386" -o "${arch}" = "amd64" ] &&
 				mount -t linprocfs linprocfs ${mnt}/compat/linux/proc
@@ -1014,13 +1076,12 @@ enter_interactive() {
 	# Skip for testport as it has already installed pkg in the ref jail.
 	if [ ${PKGNG} -eq 1 -a "${0##*/}" != "testport.sh" ]; then
 		# Install pkg-static so full pkg package can install
-		ensure_pkg_installed
+		ensure_pkg_installed force_extract
 		# Install the selected PKGNG package
 		injail env USE_PACKAGE_DEPENDS_ONLY=1 \
-		    PKG_ADD="/.p/pkg-static add" \
 		    make -C \
 		    /usr/ports/$(injail make -f /usr/ports/Mk/bsd.port.mk \
-		    -V PKGNG_ORIGIN) install-package
+		    -V PKGNG_ORIGIN) PKG_BIN="${PKG_BIN}" install-package
 	fi
 
 	# Enable all selected ports and their run-depends
@@ -1236,6 +1297,10 @@ commit_packages() {
 	    while read path; do
 		name=${path##*/}
 		[ ! -L "${PACKAGES_ROOT}/${name}" ] || continue
+		if [ -e "${PACKAGES_ROOT}/${name}" ]; then
+			msg_error "${PACKAGES_ROOT}/${name} shadows repository file in .latest/${name}. Remove the top-level one and symlink to .latest/${name}"
+			continue
+		fi
 		ln -s .latest/${name} ${PACKAGES_ROOT}/${name}
 	done
 
@@ -1352,7 +1417,7 @@ jail_start() {
 	local portsdir
 	local arch host_arch
 	local mnt
-	local needfs="${NULLFSREF} procfs"
+	local needfs="${NULLFSREF}"
 	local needkld
 	local tomnt
 
@@ -1371,16 +1436,20 @@ jail_start() {
 	[ ${JAIL_OSVERSION} -lt 900000 ] && needkld="${needkld} sem"
 
 	[ -d ${DISTFILES_CACHE:-/nonexistent} ] || err 1 "DISTFILES_CACHE directory does not exist. (c.f. poudriere.conf)"
-	[ $(sysctl -n kern.securelevel) -lt 1 ] || err 1 "kern.securelevel >= 1. Poudriere requires no securelevel to be able to handle schg flags."
+	[ ${TMPFS_ALL} -ne 1 ] && [ $(sysctl -n kern.securelevel) -ge 1 ] && \
+	    err 1 "kern.securelevel >= 1. Poudriere requires no securelevel to be able to handle schg flags. USE_TMPFS=all can override this."
 
 	if [ -z "${NOLINUX}" ]; then
 		if [ "${arch}" = "i386" -o "${arch}" = "amd64" ]; then
-			needfs="${needfs} linprocfs linsysfs"
+			needfs="${needfs} linprocfs"
 			sysctl -n compat.linux.osrelease >/dev/null 2>&1 || kldload linux
 		fi
 	fi
 	[ -n "${USE_TMPFS}" ] && needfs="${needfs} tmpfs"
-	[ ${JAILED} -eq 0 -o "${PATCHED_FS_KERNEL}" = "yes" ] && needfs="${needfs} fdescfs"
+	[ "${USE_PROCFS}" = "yes" ] && needfs="${needfs} procfs"
+	[ "${USE_FDESCFS}" = "yes" ] && \
+	    [ ${JAILED} -eq 0 -o "${PATCHED_FS_KERNEL}" = "yes" ] && \
+	    needfs="${needfs} fdescfs"
 	for fs in ${needfs}; do
 		if ! lsvfs $fs >/dev/null 2>&1; then
 			if [ $JAILED -eq 0 ]; then
@@ -1438,7 +1507,7 @@ jail_start() {
 	[ -d "${portsdir}/ports" ] && portsdir="${portsdir}/ports"
 	msg "Mounting ports/packages/distfiles"
 
-	mkdir -p ${PACKAGES}/All ${PACKAGES}/Latest
+	mkdir -p ${PACKAGES}/
 	was_a_bulk_run && stash_packages
 
 	do_portbuild_mounts ${tomnt} ${name} ${ptname} ${setname}
@@ -1471,29 +1540,29 @@ jail_start() {
 	setup_makeconf ${tomnt}/etc/make.conf ${name} ${ptname} ${setname}
 	load_blacklist ${name} ${ptname} ${setname}
 
-	test -n "${RESOLV_CONF}" && cp -v "${RESOLV_CONF}" "${tomnt}/etc/"
+	[ -n "${RESOLV_CONF}" ] && cp -v "${RESOLV_CONF}" "${tomnt}/etc/"
 	msg "Starting jail ${MASTERNAME}"
 	jstart
 	# Only set STATUS=1 if not turned off
 	# jail -s should not do this or jail will stop on EXIT
 	WITH_PKGNG=$(injail make -f /usr/ports/Mk/bsd.port.mk -V WITH_PKGNG)
 	if [ -n "${WITH_PKGNG}" ]; then
-		export PKGNG=1
-		export PKG_EXT="txz"
-		export PKG_BIN="${LOCALBASE:-/usr/local}/sbin/pkg-static"
-		export PKG_ADD="${PKG_BIN} add"
-		export PKG_DELETE="${PKG_BIN} delete -y -f"
-		export PKG_VERSION="/.p/pkg-static version"
+		PKGNG=1
+		PKG_EXT="txz"
+		PKG_BIN="/.p/pkg-static"
+		PKG_ADD="${PKG_BIN} add"
+		PKG_DELETE="${PKG_BIN} delete -y -f"
+		PKG_VERSION="${PKG_BIN} version"
 
 		[ -n "${PKG_REPO_SIGNING_KEY}" ] &&
 			! [ -f "${PKG_REPO_SIGNING_KEY}" ] &&
 			err 1 "PKG_REPO_SIGNING_KEY defined but the file is missing."
 	else
-		export PKGNG=0
-		export PKG_ADD=pkg_add
-		export PKG_DELETE=pkg_delete
-		export PKG_VERSION=pkg_version
-		export PKG_EXT="tbz"
+		PKGNG=0
+		PKG_ADD=pkg_add
+		PKG_DELETE=pkg_delete
+		PKG_VERSION=pkg_version
+		PKG_EXT="tbz"
 	fi
 
 	# 8.3 did not have distrib-dirs ran on it, so various
@@ -1502,6 +1571,10 @@ jail_start() {
 		injail mtree -eu -f /etc/mtree/BSD.var.dist -p /var >/dev/null 2>&1 || :
 		injail mtree -eu -f /etc/mtree/BSD.usr.dist -p /usr >/dev/null 2>&1 || :
 	fi
+
+	run_hook jail start
+
+	return 0
 }
 
 load_blacklist() {
@@ -1546,15 +1619,20 @@ setup_makeconf() {
 	done
 
 	# We will handle DEVELOPER for testing when appropriate
-	sed -i '' '/^DEVELOPER=/d' ${dst_makeconf}
+	if grep -q '^DEVELOPER=' ${dst_makeconf}; then
+		msg_warn "DEVELOPER=yes ignored from make.conf. Use 'bulk -t' or 'testport' for testing instead."
+		sed -i '' '/^DEVELOPER=/d' ${dst_makeconf}
+	fi
 }
 
 include_poudriere_confs() {
-	local files file flag
+	local files file flag args_hack
 
 	# Spy on cmdline arguments so this function is not needed in
 	# every new sub-command file, which could lead to missing it.
-	while getopts "j:p:z:" flag >/dev/null 2>&1; do
+	args_hack=$(echo " $@"|grep -o -- ' -[^ ]*\([jpz]\) \([^ ]*\)'|tr '\n' ' '|sed -e 's, -[^ ]*\([jpz]\) \([^ ]*\),-\1 \2,g')
+	set -- ${args_hack}
+	while getopts "j:p:z:" flag; do
 		case ${flag} in
 			j) jail="${OPTARG}" ;;
 			p) ptname="${OPTARG}" ;;
@@ -1842,7 +1920,7 @@ _real_build_port() {
 	for jpkg in ${ALLOW_MAKE_JOBS_PACKAGES}; do
 		case "${PKGNAME%-*}" in
 		${jpkg})
-			job_msg "Allowing MAKE_JOBS for this build"
+			job_msg_verbose "Allowing MAKE_JOBS for ${COLOR_PORT}${port}${COLOR_RESET}"
 			sed -i '' '/DISABLE_MAKE_JOBS=poudriere/d' \
 			    ${mnt}/etc/make.conf
 			break
@@ -1887,8 +1965,13 @@ _real_build_port() {
 		[ -z "${no_stage}" ] && JUSER=${jailuser}
 		bset_job_status "${phase}" "${port}"
 		job_msg_verbose "Status for build ${COLOR_PORT}${port}${COLOR_RESET}: ${COLOR_PHASE}${phase}"
+		[ -n "${PORTTESTING}" ] && \
+		    phaseenv="${phaseenv} DEVELOPER_MODE=yes"
 		case ${phase} in
-		check-sanity) [ -n "${PORTTESTING}" ] && phaseenv="DEVELOPER=1" ;;
+		check-sanity)
+			[ -n "${PORTTESTING}" ] && \
+			    phaseenv="${phaseenv} DEVELOPER=1"
+			;;
 		fetch)
 			mkdir -p ${mnt}/portdistfiles
 			echo "DISTDIR=/portdistfiles" >> ${mnt}/etc/make.conf
@@ -1944,8 +2027,9 @@ _real_build_port() {
 				msg "Checking shared library dependencies"
 				listfilecmd="grep -v '^@' /var/db/pkg/${PKGNAME}/+CONTENTS"
 				[ ${PKGNG} -eq 1 ] && listfilecmd="pkg query '%Fp' ${PKGNAME}"
-				injail ${listfilecmd} | injail xargs ldd 2>&1 |
-					awk '/=>/ { print $3 }' | sort -u
+				injail ${listfilecmd} | \
+				    injail xargs readelf -d 2>/dev/null | \
+				    grep NEEDED | sort -u
 			fi
 			;;
 		esac
@@ -2344,6 +2428,8 @@ ${dependency_cycles}"
 		_log_path log
 		for pkgname in ${dead_packages}; do
 			cache_get_origin origin "${pkgname}"
+			# Symlink the buildlog into errors/
+			ln -s "../${pkgname}.log" "${log}/logs/errors/${pkgname}.log"
 			badd ports.failed "${origin} ${pkgname} ${failed_phase} ${failed_phase}"
 			COLOR_ARROW="${COLOR_FAIL}" job_msg \
 			    "${COLOR_FAIL}Finished build of ${COLOR_PORT}${origin}${COLOR_FAIL}: Failed: ${COLOR_PHASE}${failed_phase}"
@@ -2823,7 +2909,7 @@ deps_file() {
 		if [ "${PKG_EXT}" = "tbz" ]; then
 			injail tar -qxf "/packages/All/${pkg##*/}" -O +CONTENTS | awk '$1 == "@pkgdep" { print $2 }' > "${_depfile}"
 		else
-			injail /.p/pkg-static info -qdF "/packages/All/${pkg##*/}" > "${_depfile}"
+			injail ${PKG_BIN} info -qdF "/packages/All/${pkg##*/}" > "${_depfile}"
 		fi
 	fi
 
@@ -2848,7 +2934,7 @@ pkg_get_origin() {
 				_origin=$(injail tar -qxf "/packages/All/${pkg##*/}" -O +CONTENTS | \
 					awk -F: '$1 == "@comment ORIGIN" { print $2 }')
 			else
-				_origin=$(injail /.p/pkg-static query -F \
+				_origin=$(injail ${PKG_BIN} query -F \
 					"/packages/All/${pkg##*/}" "%o")
 			fi
 		fi
@@ -2879,7 +2965,7 @@ pkg_get_dep_origin() {
 			compiled_dep_origins=$(injail tar -qxf "/packages/All/${pkg##*/}" -O +CONTENTS | \
 				awk -F: '$1 == "@comment DEPORIGIN" {print $2}' | tr '\n' ' ')
 		else
-			compiled_dep_origins=$(injail /.p/pkg-static query -F \
+			compiled_dep_origins=$(injail ${PKG_BIN} query -F \
 				"/packages/All/${pkg##*/}" '%do' | tr '\n' ' ')
 		fi
 		echo "${compiled_dep_origins}" > "${dep_origin_file}"
@@ -2920,8 +3006,8 @@ pkg_get_options() {
 				awk -F: '$1 == "@comment OPTIONS" {print $2}' | tr ' ' '\n' | \
 				sed -n 's/^\+\(.*\)/\1/p' | sort | tr '\n' ' ')
 		else
-			_compiled_options=$(injail /.p/pkg-static query -F \
-				"/packages/All/${pkg##*/}" '%Ov%Ok' | sed '/^off/d;s/^on//' | sort | tr '\n' ' ')
+			_compiled_options=$(injail ${PKG_BIN} query -F \
+				"/packages/All/${pkg##*/}" '%Ov%Ok' | sed '/^off/d;/^false/d;s/^on//;s/^true//' | sort | tr '\n' ' ')
 		fi
 		echo "${_compiled_options}" > "${optionsfile}"
 		setvar "${var_return}" "${_compiled_options}"
@@ -2940,11 +3026,12 @@ pkg_get_options() {
 }
 
 ensure_pkg_installed() {
+	local force="$1"
 	local mnt
 
 	_my_path mnt
 	[ ${PKGNG} -eq 1 ] || return 0
-	[ -x ${mnt}/.p/pkg-static ] && return 0
+	[ -z "${force}" ] && [ -x "${mnt}/.p/pkg-static" ] && return 0
 	[ -e ${MASTERMNT}/packages/Latest/pkg.txz ] || return 1 #pkg missing
 	injail tar xf /packages/Latest/pkg.txz -C / \
 		-s ",/.*/,.p/,g" "*/pkg-static"
@@ -3220,9 +3307,10 @@ lock_release() {
 }
 
 cache_get_pkgname() {
-	[ $# -ne 2 ] && eargs cache_get_pkgname var_return origin
+	[ $# -lt 2 ] && eargs cache_get_pkgname var_return origin fatal
 	local var_return="$1"
 	local origin=${2%/}
+	local fatal="${3:-1}"
 	local _pkgname="" existing_origin
 	local cache_origin_pkgname=${MASTERMNT}/.p/var/cache/origin-pkgname/${origin%%/*}_${origin##*/}
 	local cache_pkgname_origin
@@ -3231,8 +3319,13 @@ cache_get_pkgname() {
 
 	# Add to cache if not found.
 	if [ -z "${_pkgname}" ]; then
-		[ -d "${MASTERMNT}/usr/ports/${origin}" ] ||
-			err 1 "Invalid port origin '${COLOR_PORT}${origin}${COLOR_RESET}' not found."
+		if ! [ -d "${MASTERMNT}/usr/ports/${origin}" ]; then
+			if [ ${fatal} -eq 1 ]; then
+				err 1 "Invalid port origin '${COLOR_PORT}${origin}${COLOR_RESET}' not found."
+			else
+				return 1
+			fi
+		fi
 		_pkgname=$(injail make -C /usr/ports/${origin} -VPKGNAME ||
 			err 1 "Error getting PKGNAME for ${COLOR_PORT}${origin}${COLOR_RESET}")
 		[ -n "${_pkgname}" ] || err 1 "Missing PKGNAME for ${COLOR_PORT}${origin}${COLOR_RESET}"
@@ -3263,6 +3356,18 @@ cache_get_origin() {
 	setvar "${var_return}" "${_origin}"
 }
 
+set_dep_fatal_error() {
+	[ -n "${DEP_FATAL_ERROR}" ] && return 0
+	DEP_FATAL_ERROR=1
+	# Mark the fatal error flag. Must do it like this as this may be
+	# running in a sub-shell.
+	: > ${MASTERMNT}/.p/dep_fatal_error
+}
+
+check_dep_fatal_error() {
+	[ -f ${MASTERMNT}/.p/dep_fatal_error ]
+}
+
 compute_deps() {
 	local port pkgname dep_pkgname
 
@@ -3278,13 +3383,16 @@ compute_deps() {
 			parallel_run compute_deps_port ${port}
 		else
 			if [ ${ALL} -eq 1 ]; then
-				msg_warn "Invalid port origin listed in category Makefiles: ${COLOR_PORT}${port}"
+				msg_warn "Nonexistent port listed in category Makefiles: ${COLOR_PORT}${port}"
 			else
-				err 1 "Invalid port origin listed for build: ${COLOR_PORT}${port}"
+				msg_error "Nonexistent port listed for build: ${COLOR_PORT}${port}"
+				set_dep_fatal_error
 			fi
 		fi
 	done
-	parallel_stop
+	if ! parallel_stop || check_dep_fatal_error; then
+		err 1 "Fatal errors encountered calculating dependencies"
+	fi
 
 	sort -u "${MASTERMNT}/.p/pkg_deps.unsorted" > \
 	    "${MASTERMNT}/.p/pkg_deps"
@@ -3292,9 +3400,11 @@ compute_deps() {
 	bset status "computingrdeps:"
 
 	# cd into rdeps to allow xargs mkdir to have more args.
-	cd "${MASTERMNT}/.p/rdeps"
-	awk '{print $2}' "${MASTERMNT}/.p/pkg_deps" |
-	    sort -u | xargs mkdir
+	(
+		cd "${MASTERMNT}/.p/rdeps"
+		awk '{print $2}' "${MASTERMNT}/.p/pkg_deps" |
+		    sort -u | xargs mkdir
+	)
 
 	# xargs|touch was no quicker here.
 	while read dep_pkgname pkgname; do
@@ -3328,12 +3438,22 @@ compute_deps_port() {
 
 	for dep_port in `list_deps ${port}`; do
 		msg_debug "${COLOR_PORT}${port}${COLOR_DEBUG} depends on ${COLOR_PORT}${dep_port}"
-		[ "${port}" != "${dep_port}" ] ||
-			err 1 "${port} incorrectly depends on itself. Please contact maintainer of the port to fix this."
+		if [ "${port}" = "${dep_port}" ]; then
+			msg_error "${COLOR_PORT}${port}${COLOR_RESET} incorrectly depends on itself. Please contact maintainer of the port to fix this."
+			set_dep_fatal_error
+			return 1
+		fi
 		# Detect bad cat/origin/ dependency which pkgng will not register properly
-		[ "${dep_port}" = "${dep_port%/}" ] ||
-			err 1 "${COLOR_PORT}${port}${COLOR_RESET} depends on bad origin '${COLOR_PORT}${dep_port}${COLOR_RESET}'; Please contact maintainer of the port to fix this."
-		cache_get_pkgname dep_pkgname "${dep_port}"
+		if ! [ "${dep_port}" = "${dep_port%/}" ]; then
+			msg_error "${COLOR_PORT}${port}${COLOR_RESET} depends on bad origin '${COLOR_PORT}${dep_port}${COLOR_RESET}'; Please contact maintainer of the port to fix this."
+			set_dep_fatal_error
+			return 1
+		fi
+		if ! cache_get_pkgname dep_pkgname "${dep_port}" 0; then
+			msg_error "${COLOR_PORT}${port}${COLOR_RESET} depends on nonexistent origin '${COLOR_PORT}${dep_port}${COLOR_RESET}'; Please contact maintainer of the port to fix this."
+			set_dep_fatal_error
+			return 1
+		fi
 
 		# Only do this if it's not already done, and not ALL, as everything will
 		# be touched anyway
@@ -3374,7 +3494,7 @@ listed_ports() {
 	} | while read origin; do
 		if check_moved new_origin ${origin}; then
 			[ -n "${tell_moved}" ] && msg \
-			    "MOVED: ${origin} renamed to ${new_origin}" >&2
+			    "MOVED: ${COLOR_PORT}${origin}${COLOR_RESET} renamed to ${COLOR_PORT}${new_origin}${COLOR_RESET}" >&2
 			origin=${new_origin}
 		fi
 		echo "${origin}"
@@ -3485,6 +3605,7 @@ delete_stale_symlinks_and_empty_dirs() {
 }
 
 load_moved() {
+	[ -f ${MASTERMNT}/usr/ports/MOVED ] || return 0
 	msg "Loading MOVED"
 	bset status "loading_moved:"
 	mkdir ${MASTERMNT}/.p/MOVED
@@ -3516,7 +3637,7 @@ check_moved() {
 }
 
 clean_build_queue() {
-	local tmp pn
+	local tmp pn port
 
 	bset status "cleaning:"
 	msg "Cleaning the build queue"
@@ -3532,12 +3653,21 @@ clean_build_queue() {
 	# but one of their run deps has missing build deps packages which
 	# causes the build deps to be in the queue at this point.
 
-	if [ ${ALL} -eq 0 ]; then
+	if [ ${TRIM_ORPHANED_BUILD_DEPS} = "yes" -a ${ALL} -eq 0 ]; then
 		tmp=$(mktemp ${MASTERMNT}/tmp/queue.XXXXXX)
-		listed_ports | while read port; do
-			cache_get_pkgname pkgname "${port}"
-			echo "${pkgname}"
-		done | {
+		{
+			listed_ports | while read port; do
+				cache_get_pkgname pkgname "${port}"
+				echo "${pkgname}"
+			done
+			# Pkg is a special case. It may not have been requested,
+			# but it should always be rebuilt if missing.
+			for port in ports-mgmt/pkg ports-mgmt/pkg-devel; do
+				cache_get_pkgname pkgname "${port}" 0 \
+				    > /dev/null 2>&1 && \
+				    echo "${pkgname}"
+			done
+		} | {
 			FIND_ALL_DEPS=
 			while read pkgname; do
 				find_all_deps "${pkgname}"
@@ -3765,8 +3895,10 @@ load_priorities() {
 		for pkg_boost in ${PRIORITY_BOOST}; do
 			case ${pkgname%-*} in
 				${pkg_boost})
+					[ -d ${MASTERMNT}/.p/deps/${pkgname} ] \
+					    || continue
 					cache_get_origin origin "${pkgname}"
-					msg "Boosting priority: ${origin}"
+					msg "Boosting priority: ${COLOR_PORT}${origin}"
 					priority=99
 					boosted=1
 					break
@@ -3863,7 +3995,8 @@ clean_restricted() {
 	# mount_nullfs does not support mount -u
 	umount -f ${MASTERMNT}/packages
 	mount_packages
-	injail make -C /usr/ports -j ${PARALLEL_JOBS} clean-restricted >/dev/null
+	injail make -s -C /usr/ports -j ${PARALLEL_JOBS} \
+	    RM="/bin/rm -fv" ECHO_MSG="true" clean-restricted
 	# For pkg_install remove packages that have lost one of their dependency
 	if [ ${PKGNG} -eq 0 ]; then
 		msg_verbose "Checking packages for missing dependencies"
@@ -3892,24 +4025,32 @@ build_repo() {
 	if [ $PKGNG -eq 1 ]; then
 		msg "Creating pkgng repository"
 		bset status "pkgrepo:"
-		ensure_pkg_installed
+		ensure_pkg_installed force_extract
+		if [ -r "${PKG_REPO_META_FILE:-/nonexistent}" ]; then
+			PKG_META="-m /tmp/pkgmeta"
+			PKG_META_MASTERMNT="-m ${MASTERMNT}/tmp/pkgmeta"
+			install -m 0400 "${PKG_REPO_META_FILE}" \
+			    ${MASTERMNT}/tmp/pkgmeta
+		fi
 		mkdir -p ${MASTERMNT}/tmp/packages
 		if [ -n "${PKG_REPO_SIGNING_KEY}" ]; then
 			install -m 0400 ${PKG_REPO_SIGNING_KEY} \
 				${MASTERMNT}/tmp/repo.key
-			injail /.p/pkg-static repo -o /tmp/packages \
+			injail ${PKG_BIN} repo -o /tmp/packages \
+				${PKG_META} \
 				/packages /tmp/repo.key
 			rm -f ${MASTERMNT}/tmp/repo.key
 		elif [ "${PKG_REPO_FROM_HOST:-no}" = "yes" ]; then
 			# Sometimes building repo from host is needed if
 			# using SSH with DNSSEC as older hosts don't support
 			# it.
-			${MASTERMNT}/.p/pkg-static repo \
-			    -o ${MASTERMNT}/tmp/packages ${MASTERMNT}/packages \
+			${MASTERMNT}${PKG_BIN} repo \
+			    -o ${MASTERMNT}/tmp/packages ${PKG_META_MASTERMNT} \
+			    ${MASTERMNT}/packages \
 			    ${SIGNING_COMMAND:+signing_command: ${SIGNING_COMMAND}}
 		else
-			JNETNAME="n" injail /.p/pkg-static repo \
-			    -o /tmp/packages /packages \
+			JNETNAME="n" injail ${PKG_BIN} repo \
+			    -o /tmp/packages ${PKG_META} /packages \
 			    ${SIGNING_COMMAND:+signing_command: ${SIGNING_COMMAND}}
 		fi
 		cp ${MASTERMNT}/tmp/packages/* ${PACKAGES}/
@@ -4138,6 +4279,9 @@ fi
 : ${PORTTESTING_FATAL:=yes}
 : ${PORTTESTING_RECURSIVE:=0}
 : ${RESTRICT_NETWORKING:=yes}
+: ${TRIM_ORPHANED_BUILD_DEPS:=yes}
+: ${USE_PROCFS:=yes}
+: ${USE_FDESCFS:=yes}
 # - must be last
 : ${HASH_VAR_NAME_SUB_GLOB:="[/.+,-]"}
 
@@ -4154,7 +4298,7 @@ fi
 : ${CHECK_CHANGED_OPTIONS:=verbose}
 : ${NO_RESTRICTED:=no}
 : ${USE_COLORS:=yes}
-: ${ALLOW_MAKE_JOBS_PACKAGES:=pkg ccache}
+: ${ALLOW_MAKE_JOBS_PACKAGES=pkg ccache}
 
 : ${BUILDNAME_FORMAT:="%Y-%m-%d_%Hh%Mm%Ss"}
 : ${BUILDNAME:=$(date +${BUILDNAME_FORMAT})}
@@ -4168,9 +4312,9 @@ TIME_START=$(date +%s)
 
 [ -d ${WATCHDIR} ] || mkdir -p ${WATCHDIR}
 
+. $(dirname ${0})/include/colors.sh
 . $(dirname ${0})/include/display.sh
 . $(dirname ${0})/include/html.sh
-. $(dirname ${0})/include/messages.sh
 . $(dirname ${0})/include/parallel.sh
 . $(dirname ${0})/include/hash.sh
 . $(dirname ${0})/include/fs.sh

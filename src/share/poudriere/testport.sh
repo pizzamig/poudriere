@@ -138,6 +138,8 @@ done
 [ -z ${ORIGIN} ] && usage
 
 [ -z "${JAILNAME}" ] && err 1 "Don't know on which jail to run please specify -j"
+_pget portsdir ${PTNAME} mnt
+[ -d "${portsdir}/${ORIGIN}" ] || err 1 "Nonexistent origin ${COLOR_PORT}${ORIGIN}${COLOR_RESET}"
 
 maybe_run_queued "$@"
 
@@ -216,7 +218,6 @@ PKGENV="PACKAGES=/tmp/pkgs PKGREPOSITORY=/tmp/pkgs"
 injail install -d -o ${PORTBUILD_USER} /tmp/pkgs
 PORTTESTING=yes
 export TRYBROKEN=yes
-export DEVELOPER_MODE=yes
 export NO_WARNING_PKG_INSTALL_EOL=yes
 # Disable waits unless running in a tty interactively
 if ! [ -t 1 ]; then
@@ -296,6 +297,7 @@ if [ ${INTERACTIVE_MODE} -gt 0 ]; then
 else
 	if [ -f ${MASTERMNT}/tmp/pkgs/${PKGNAME}.${PKG_EXT} ]; then
 		msg "Installing from package"
+		ensure_pkg_installed
 		injail ${PKG_ADD} /tmp/pkgs/${PKGNAME}.${PKG_EXT} || :
 	fi
 fi
@@ -304,6 +306,7 @@ msg "Cleaning up"
 injail make -C /usr/ports/${ORIGIN} clean
 
 msg "Deinstalling package"
+ensure_pkg_installed
 injail ${PKG_DELETE} ${PKGNAME}
 
 stop_build /usr/ports/${ORIGIN} ${ret}
