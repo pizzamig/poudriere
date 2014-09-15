@@ -27,8 +27,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/sbuf.h>
 
+#include <utstring.h>
 #include <string.h>
 #include <unistd.h>
 #include <ucl.h>
@@ -45,7 +45,7 @@ main(int argc, char **argv)
 	int pdfd, ch;
 	size_t r;
 	const char *method, *uri, *data;
-	struct sbuf *header, *req;
+	UT_string *header, *req;
 	char buf[BUFSIZ];
 
 	struct option longopts[] = {
@@ -120,33 +120,32 @@ main(int argc, char **argv)
 		err(EXIT_FAILURE, "connect()");
 	}
 
-	header = sbuf_new_auto();
-	sbuf_cat(header, "CONTENT_LENGTH");
-	sbuf_putc(header, '\0');
-	sbuf_printf(header, "%lu", data == NULL ? 0 : strlen(data));
-	sbuf_putc(header, '\0');
-	sbuf_cat(header, "SCGI");
-	sbuf_putc(header, '\0');
-	sbuf_putc(header, '1');
-	sbuf_putc(header, '\0');
-	sbuf_cat(header, "REQUEST_METHOD");
-	sbuf_putc(header, '\0');
-	sbuf_cat(header, method);
-	sbuf_putc(header, '\0');
-	sbuf_cat(header, "REQUEST_URI");
-	sbuf_putc(header, '\0');
-	sbuf_cat(header, uri);
-	sbuf_putc(header, '\0');
-	sbuf_finish(header);
+	utstring_new(header);
+	utstring_printf(header, "CONTENT_LENGTH");
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "%lu", data == NULL ? 0 : strlen(data));
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "SCGI");
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "1");
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "REQUEST_METHOD");
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "%s", method);
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "REQUEST_URI");
+	utstring_bincpy(header, '\0', 1);
+	utstring_bincpy(header, '\0', 1);
+	utstring_printf(header, "%s", uri);
+	utstring_bincpy(header, '\0', 1);
 
-	req = sbuf_new_auto();
-	sbuf_printf(req, "%zd:", sbuf_len(header));
-	sbuf_bcat(req, sbuf_data(header), sbuf_len(header));
-	sbuf_printf(req, ",");
-	sbuf_cat(req, data);
-	sbuf_finish(req);
+	utstring_new(req);
+	utstring_printf(req, "%zd:", utstring_len(header));
+	utstring_concat(req, header);
+	utstring_printf(req, ",");
+	utstring_printf(req, "%s", data);
 
-	write(pdfd, sbuf_data(req), sbuf_len(req));
+	write(pdfd, utstring_body(req), utstring_len(req));
 
 	while ((r = read(pdfd, buf, BUFSIZ)) > 0) {
 		write(fileno(stdout), buf, r);

@@ -62,8 +62,7 @@ dist_awk_DATA= src/share/poudriere/awk/dependency_loop.awk \
 		src/share/poudriere/awk/processonelog2.awk \
 		src/share/poudriere/awk/siginfo_buildtime.awk
 
-dist_html_DATA= 	src/share/poudriere/html/build.html \
-			src/share/poudriere/html/index.html \
+dist_html_DATA= 	src/share/poudriere/html/index.html \
 			src/share/poudriere/html/jail.html \
 			src/share/poudriere/html/robots.txt
 dist_assets_DATA=	src/share/poudriere/html/assets/poudriere.js \
@@ -150,20 +149,19 @@ libnv_a_SOURCES=	external/libnv/dnvlist.c \
 			external/libnv/nvlist.c \
 			external/libnv/nvpair.c
 poudriered_CFLAGS=	-DPREFIX=\"$(prefix)\" \
-			-I$(top_srcdir)/external/libucl/include
+			-I$(top_srcdir)/external/libucl/include \
+			-I$(top_srcdir)/external/uthash
 poudriered_LDADD=	libucl.a \
-			-lsbuf \
 			-lutil
 pdctl_SOURCES=		src/pdctl/pdctl.c
 pdctl_CFLAGS=		-DPREFIX=\"$(prefix)\" \
-			-I$(top_srcdir)/external/libucl/include
-pdctl_LDADD=		libucl.a \
-			-lsbuf
+			-I$(top_srcdir)/external/libucl/include \
+			-I$(top_srcdir)/external/uthash
+pdctl_LDADD=		libucl.a
 
 jexecd_SOURCES=	src/libexec/poudriere/jexecd/jexecd.c
 jexecd_CFLAGS=	-I$(top_srcdir)/external/libnv
 jexecd_LDADD=	libnv.a \
-		-lsbuf \
 		-lutil \
 		-ljail
 

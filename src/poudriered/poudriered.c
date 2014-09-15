@@ -29,12 +29,12 @@
 #include <sys/event.h>
 #include <sys/param.h>
 #include <sys/time.h>
-#include <sys/sbuf.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 
+#include <utstring.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -645,19 +645,21 @@ client_read(struct client *cl, long len)
 {
 	int r;
 	char buf[BUFSIZ];
-	struct sbuf *b = sbuf_new_auto();
+	UT_string *b;
+
+	utstring_new(b);
 
 	r = read(cl->fd, buf, sizeof(buf));
 	if ((r < 0) && ((errno == EINTR) || (errno == EAGAIN)))
 		return;
 
-	sbuf_bcat(b, buf, r);
+	utstring_bincpy(b, buf, r);
 
 	if ((long)r == len) {
-		cl->req = scgi_parse(sbuf_data(b));
+		cl->req = scgi_parse(utstring_body(b));
 		client_exec(cl);
 	}
-	sbuf_delete(b);
+	utstring_free(b);
 }
 
 
