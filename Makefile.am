@@ -166,7 +166,7 @@ rexec_CFLAGS=	-I$(top_srcdir)/external/libnv
 rexec_LDADD=	libnv.a
 
 cached_SOURCES=	src/libexec/poudriere/cached/cached.c
-cached_CFLAGS=	-I$(top_srcdir)/external/uthash
+cached_CFLAGS=	-I$(top_srcdir)/external/uthash -I$(top_srcdir)/src
 cached_LDADD=	-lutil
 
 .PHONY:	gen-make-wiki

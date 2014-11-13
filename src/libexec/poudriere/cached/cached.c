@@ -24,6 +24,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#ifdef HAVE_CAPSICUM
+#include <sys/capability.h>
+#endif
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/param.h>
@@ -154,6 +159,9 @@ main(int argc, char **argv)
 	pid_t otherpid;
 	int ch, fd;
 	bool foreground = false;
+#ifdef HAVE_CAPSICUM
+	cap_rights_t rights;
+#endif
 
 	while ((ch = getopt(argc, argv, "s:fp:n:")) != -1) {
 		switch (ch) {
@@ -211,6 +219,13 @@ main(int argc, char **argv)
 	pidfile_write(pfh);
 	if (listen(fd, 1024) < 0)
 		err(EXIT_FAILURE, "listen()");
+
+	cap_rights_init(&rights, CAP_PREAD, CAP_EVENT, CAP_ACCEPT);
+	if (cap_rights_limit(fd, &rights) < 0 && errno != ENOSYS)
+		err(EXIT_FAILURE, "cap_rights_limit() failed");
+
+	if (cap_enter() < 0 && errno != ENOSYS)
+		err(EXIT_FAILURE, "cap_enter() failed");
 
 	serve(fd);
 }

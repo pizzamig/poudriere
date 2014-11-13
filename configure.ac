@@ -31,6 +31,12 @@ AC_CHECK_HEADERS_ONCE([float.h])
 AC_CHECK_HEADERS_ONCE([math.h])
 AC_CHECK_HEADERS_ONCE([fcntl.h])
 
+AC_CHECK_HEADER([sys/capability.h], [
+	AC_CHECK_LIB(c, cap_sandboxed, [
+		AC_DEFINE(HAVE_CAPSICUM, 1, [Define 1 if you have 'capsicum'.])
+	])
+])
+
 AC_CONFIG_FILES(Makefile)
 
 # Preserve timestamps for install. This is needed to preserve hardlinks
