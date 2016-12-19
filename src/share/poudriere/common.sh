@@ -2290,6 +2290,12 @@ _real_build_port() {
 		extract)
 			max_execution_time=3600
 			chown -R ${JUSER} ${mnt}/wrkdirs
+			if [ "${DISTFILES_CACHE}" != "no" ]; then
+				gather_distfiles ${portdir} ${DISTFILES_CACHE} ${mnt}/portdistf
+iles || return 1
+			fi
+			JNETNAME="n"
+			JUSER=root
 			;;
 		configure) [ -n "${PORTTESTING}" ] && markfs prebuild ${mnt} ;;
 		run-depends)
